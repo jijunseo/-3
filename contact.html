@@ -42,8 +42,6 @@
 
     #main-content {
       display: none;
-      text-align: center;
-      padding: 100px 20px;
       animation: fadeIn 1.5s ease forwards;
     }
 
@@ -52,18 +50,39 @@
       to { opacity: 1; }
     }
 
-    header {
-      position: absolute;
-      top: 20px;
-      left: 30px;
+    .logo-header {
+      padding: 20px 40px 0 40px;
     }
 
-    header img {
+    .logo-header img {
       height: 36px;
     }
 
+    .contact-content {
+      text-align: center;
+      padding: 60px 20px 100px 20px;
+    }
+
+    .home-button {
+      display: inline-block;
+      margin-top: 20px;
+      background-color: transparent;
+      border: 2px solid #c2a77d;
+      color: #c2a77d;
+      padding: 10px 20px;
+      font-size: 14px;
+      text-decoration: none;
+      border-radius: 20px;
+      transition: background-color 0.3s, color 0.3s;
+    }
+
+    .home-button:hover {
+      background-color: #c2a77d;
+      color: white;
+    }
+
     h1 {
-      font-size: 2.2em;
+      font-size: 2.5em;
       margin-bottom: 40px;
       color: #222;
     }
@@ -97,15 +116,19 @@
     <img src="2.png" alt="Studio.IdoL Logo" />
   </div>
 
-  <header>
-    <a href="index.html"><img src="2.png" alt="Studio.IdoL Logo" /></a>
-  </header>
-
   <div id="main-content">
-    <h1>Choose Your Instagram</h1>
-    <div class="button-group">
-      <a class="insta-button" href="https://www.instagram.com/studio.idol_sg?igsh=Y2ZqZXdlZ21nOWY0&utm_source=qr" target="_blank">Singapore</a>
-      <a class="insta-button" href="https://www.instagram.com/studio.idol_us?igsh=MTU0dW00Ym0xbGNwZw%3D%3D&utm_source=qr" target="_blank">USA</a>
+    <div class="logo-header">
+      <a href="index.html"><img src="2.png" alt="Studio.IdoL Logo" /></a>
+    </div>
+
+    <div class="contact-content">
+      <h1>Where would you like to visit?</h1>
+      <div class="button-group">
+        <a class="insta-button" href="https://www.instagram.com/studio.idol_sg?igsh=Y2ZqZXdlZ21nOWY0&utm_source=qr" target="_blank">Singapore Instagram</a>
+        <a class="insta-button" href="https://www.instagram.com/studio.idol_us?igsh=MTU0dW00Ym0xbGNwZw%3D%3D&utm_source=qr" target="_blank">USA Instagram</a>
+      </div>
+      <br />
+      <a class="home-button" href="index.html">Return to Home</a>
     </div>
   </div>
 
