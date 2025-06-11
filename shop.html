@@ -1,0 +1,145 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Shop - Studio.IdoL</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      font-family: 'Helvetica Neue', sans-serif;
+      background: #f7f7f7;
+      color: #222;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    #splash {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      animation: splash-animation 5s forwards;
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+    }
+
+    @keyframes splash-animation {
+      0% { opacity: 0; transform: scale(0.9); filter: blur(10px); }
+      20% { opacity: 1; transform: scale(1); filter: blur(0px); }
+      70% { opacity: 1; transform: scale(1.02); filter: blur(0px); }
+      100% { opacity: 0; transform: scale(1.05); filter: blur(3px); }
+    }
+
+    #splash img {
+      width: 300px;
+      max-width: 80%;
+      height: auto;
+      filter: drop-shadow(0 0 20px rgba(0,0,0,0.3));
+    }
+
+    #main-content {
+      display: none;
+      opacity: 0;
+    }
+
+    @keyframes content-fadein {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 40px;
+      background-color: #fff;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    }
+
+    .logo {
+      height: 40px;
+      cursor: pointer;
+    }
+
+    nav ul {
+      list-style: none;
+      display: flex;
+      gap: 30px;
+      margin: 0;
+      padding: 0;
+    }
+
+    nav ul li a {
+      text-decoration: none;
+      color: #333;
+      font-weight: 500;
+      font-size: 16px;
+      transition: color 0.3s;
+    }
+
+    nav ul li a:hover {
+      color: #c29958;
+    }
+
+    .shop-content {
+      padding: 80px 40px;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 2.5em;
+      margin-bottom: 20px;
+    }
+
+    p {
+      font-size: 1.1em;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <div id="splash">
+    <img src="2.png" alt="Studio.IdoL Logo">
+  </div>
+
+  <div id="main-content">
+    <header>
+      <a href="index.html"><img src="2.png" alt="Studio.IdoL Logo" class="logo"></a>
+      <nav>
+        <ul>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="shop.html">Shop</a></li>
+          <li><a href="contact.html">Contact</a></li>
+          <li><a href="#about">About</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <div class="shop-content">
+      <h1>Shop Coming Soon</h1>
+      <p>Our curated fashion selections will be available here shortly. Stay tuned!</p>
+    </div>
+  </div>
+
+  <script>
+    window.addEventListener('load', function() {
+      setTimeout(function() {
+        const splash = document.getElementById('splash');
+        const content = document.getElementById('main-content');
+        splash.style.display = 'none';
+        content.style.display = 'block';
+        void content.offsetWidth;
+        content.style.animation = 'content-fadein 2s forwards';
+      }, 5000);
+    });
+  </script>
+</body>
+</html>
