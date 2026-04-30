@@ -76,21 +76,30 @@ def _html(name: str, request: Request, ctx: dict = None, page: str = "dashboard"
 #  공개 라우트
 # ══════════════════════════════════════════════════
 
-@app.get("/", response_class=HTMLResponse)
-async def root():
+@app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
+async def root(request: Request):
+    # HEAD 요청 (Render 헬스체크) → 빈 200 응답
+    if request.method == "HEAD":
+        return HTMLResponse(content="", status_code=200)
     return HTMLResponse(
         "<html><body style='background:#1a1c1f;color:#fff;"
         "font-family:sans-serif;display:flex;justify-content:center;"
         "align-items:center;height:100vh;margin:0'>"
         "<div style='text-align:center'>"
-        "<div style='font-size:64px;margin-bottom:16px'>🛡️</div>"
+        "<div style='font-size:64px;margin-bottom:16px'>&#128737;</div>"
         "<h2 style='font-size:24px'>RecoveryBot 서버 정상 작동 중</h2>"
         "<p style='color:#8e9297;margin-top:8px'>웹서버가 실행 중입니다.</p>"
         "<a href='/admin' style='display:inline-block;margin-top:24px;"
         "background:#5865F2;color:#fff;padding:12px 28px;border-radius:8px;"
-        "text-decoration:none;font-weight:700'>📊 관리 패널 열기</a>"
+        "text-decoration:none;font-weight:700'>관리 패널 열기</a>"
         "</div></body></html>"
     )
+
+
+# ── 헬스체크 엔드포인트 (UptimeRobot / Render 전용) ──
+@app.api_route("/health", methods=["GET", "HEAD"])
+async def health(request: Request):
+    return JSONResponse({"status": "ok"})
 
 
 # ── 인증 콜백 (디스코드 봇 인증 버튼용) ─────────────
