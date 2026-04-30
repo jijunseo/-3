@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}초대 로그 — RecoveryBot{% endblock %}
+{% block page_title %}📨 초대 로그{% endblock %}
+{% block page_sub %}누가 누굴 초대했는지, 초대 순위 확인{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+  <!-- 초대 순위 -->
+  <div class="card">
+    <div class="card-title">🏆 초대 순위 TOP 20</div>
+    <div id="inviteTop" style="color:#8e9297;font-size:13px">로딩 중...</div>
+  </div>
+
+  <!-- 초대 로그 -->
+  <div class="card">
+    <div class="card-title">📋 최근 초대 기록 (50건)</div>
+    <div class="table-wrap" style="max-height:500px;overflow-y:auto">
+      <table>
+        <thead><tr><th>입장 멤버</th><th>초대자</th><th>날짜</th></tr></thead>
+        <tbody id="inviteLog">
+          <tr><td colspan="3" style="text-align:center;color:#8e9297;padding:32px">로딩 중...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const gid = window.GUILD_ID;
+
+async function loadInvites() {
+  if (!gid) {
+    document.getElementById('inviteTop').innerHTML = '<div style="color:#8e9297;text-align:center;padding:20px">← 왼쪽에서 서버를 선택하세요</div>';
+    return;
+  }
+  try {
+    const data = await api('GET', `/api/invites?guild_id=${gid}`);
+
+    // 순위
+    const topEl = document.getElementById('inviteTop');
+    if (!data.top.length) {
+      topEl.innerHTML = '<div style="text-align:center;padding:24px;color:#8e9297">초대 기록이 없습니다.</div>';
+    } else {
+      const medals = ['🥇','🥈','🥉'];
+      topEl.innerHTML = data.top.map((r,i) => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:20px">${medals[i] || (i+1)+'.'}
+            </span>
+            <div>
+              <div style="color:#fff;font-weight:600">${r.inviter_name}</div>
+              <div style="color:#8e9297;font-size:11px;font-family:monospace">${r.inviter_id}</div>
+            </div>
+          </div>
+          <span class="badge badge-green">${r.cnt}명 초대</span>
+        </div>
+      `).join('');
+    }
+
+    // 로그
+    const logTb = document.getElementById('inviteLog');
+    if (!data.logs.length) {
+      logTb.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#8e9297;padding:32px">초대 기록이 없습니다.</td></tr>';
+    } else {
+      logTb.innerHTML = data.logs.map(l => `
+        <tr>
+          <td style="color:#fff">${l.invitee_name}</td>
+          <td style="color:#a5b4fc">${l.inviter_name}</td>
+          <td style="color:#8e9297;font-size:11px">${l.created_at}</td>
+        </tr>
+      `).join('');
+    }
+  } catch(e) {
+    document.getElementById('inviteTop').innerHTML = `<div style="color:#ED4245">${e.message}</div>`;
+  }
+}
+
+loadInvites();
+</script>
+{% endblock %}

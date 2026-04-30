@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}RecoveryBot 관리 패널{% endblock %}</title>
+<style>
+/* ─── 전역 ─── */
+:root {
+  --bg:       #1a1c1f;
+  --sidebar:  #111214;
+  --card:     #2C2F33;
+  --card2:    #36393F;
+  --border:   #3a3d44;
+  --text:     #DCDDDE;
+  --muted:    #8e9297;
+  --accent:   #5865F2;
+  --green:    #57F287;
+  --red:      #ED4245;
+  --orange:   #FEE75C;
+  --gold:     #FAA61A;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', -apple-system, sans-serif;
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ─── 사이드바 ─── */
+.sidebar {
+  width: 240px;
+  background: var(--sidebar);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  z-index: 100;
+  border-right: 1px solid var(--border);
+}
+.sidebar-logo {
+  padding: 20px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sidebar-logo .logo-icon { font-size: 28px; }
+.sidebar-logo .logo-text { font-size: 15px; font-weight: 700; color: #fff; line-height: 1.3; }
+.sidebar-logo .logo-sub  { font-size: 11px; color: var(--muted); }
+
+.sidebar-guild {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-guild label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; display: block; margin-bottom: 6px; }
+.sidebar-guild select {
+  width: 100%;
+  background: var(--card2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sidebar-nav { flex: 1; padding: 8px 0; overflow-y: auto; }
+.nav-section {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  padding: 12px 16px 4px;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 14px;
+  border-radius: 4px;
+  margin: 1px 8px;
+  transition: all .15s;
+}
+.nav-item:hover { background: var(--card2); color: var(--text); }
+.nav-item.active { background: var(--accent); color: #fff; }
+.nav-item .icon { font-size: 18px; width: 22px; text-align: center; }
+
+.sidebar-user {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.user-avatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.user-info { flex: 1; overflow: hidden; }
+.user-name { font-size: 13px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-role { font-size: 11px; color: var(--green); }
+.logout-btn {
+  font-size: 18px;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color .15s;
+}
+.logout-btn:hover { color: var(--red); }
+
+/* ─── 메인 콘텐츠 ─── */
+.main {
+  margin-left: 240px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+.topbar {
+  padding: 16px 28px;
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.page-title { font-size: 18px; font-weight: 700; color: #fff; }
+.page-sub   { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+.content { padding: 28px; flex: 1; }
+
+/* ─── 카드 ─── */
+.card {
+  background: var(--card);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ─── 통계 그리드 ─── */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.stat-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px;
+}
+.stat-icon { font-size: 28px; margin-bottom: 8px; }
+.stat-value { font-size: 26px; font-weight: 800; color: #fff; }
+.stat-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* ─── 버튼 ─── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all .15s;
+  text-decoration: none;
+}
+.btn-primary  { background: var(--accent); color: #fff; }
+.btn-primary:hover  { background: #4752c4; }
+.btn-success  { background: #3ba55d; color: #fff; }
+.btn-success:hover  { background: #2d7d46; }
+.btn-danger   { background: var(--red); color: #fff; }
+.btn-danger:hover   { background: #c0373a; }
+.btn-warn     { background: var(--gold); color: #000; }
+.btn-warn:hover     { background: #e0961a; }
+.btn-ghost    { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+.btn-ghost:hover    { background: var(--card2); color: var(--text); }
+.btn-sm { padding: 5px 12px; font-size: 12px; }
+
+/* ─── 테이블 ─── */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+tbody tr:hover { background: var(--card2); }
+tbody td { padding: 12px 14px; }
+tbody tr:last-child { border-bottom: none; }
+
+/* ─── 배지 ─── */
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.badge-green  { background: rgba(87,242,135,.15); color: var(--green); }
+.badge-red    { background: rgba(237,66,69,.15);  color: var(--red); }
+.badge-orange { background: rgba(250,166,26,.15); color: var(--gold); }
+.badge-blue   { background: rgba(88,101,242,.15); color: #a5b4fc; }
+
+/* ─── 폼 ─── */
+.form-group { margin-bottom: 14px; }
+.form-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .4px; }
+.form-control {
+  width: 100%;
+  background: var(--card2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 9px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.form-control:focus { outline: none; border-color: var(--accent); }
+
+/* ─── 모달 ─── */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.65);
+  z-index: 999;
+  justify-content: center;
+  align-items: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 28px;
+  width: 440px;
+  max-width: 95vw;
+  border: 1px solid var(--border);
+}
+.modal-title { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 18px; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+/* ─── 알림 토스트 ─── */
+#toast {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 20px;
+  font-size: 13px;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity .3s;
+  pointer-events: none;
+  max-width: 320px;
+}
+#toast.show { opacity: 1; }
+#toast.success { border-left: 3px solid var(--green); }
+#toast.error   { border-left: 3px solid var(--red); }
+
+/* ─── 반응형 ─── */
+@media (max-width: 768px) {
+  .sidebar { transform: translateX(-100%); }
+  .main    { margin-left: 0; }
+}
+</style>
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<!-- 사이드바 -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">🛡️</div>
+    <div>
+      <div class="logo-text">RecoveryBot</div>
+      <div class="logo-sub">관리 패널</div>
+    </div>
+  </div>
+
+  <div class="sidebar-guild">
+    <label>서버 선택</label>
+    <select id="guildSelect" onchange="setGuild(this.value)">
+      <option value="">서버를 선택하세요</option>
+      {% for g in user.guilds %}
+      <option value="{{ g.id }}" {% if g.id == request.cookies.get('guild_id') %}selected{% endif %}>{{ g.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-section">메인</div>
+    <a href="/admin" class="nav-item {% if request.url.path == '/admin' %}active{% endif %}">
+      <span class="icon">📊</span> 대시보드
+    </a>
+
+    <div class="nav-section">서버 관리</div>
+    <a href="/admin/backup" class="nav-item {% if '/backup' in request.url.path %}active{% endif %}">
+      <span class="icon">💾</span> 백업 관리
+    </a>
+    <a href="/admin/members" class="nav-item {% if '/members' in request.url.path %}active{% endif %}">
+      <span class="icon">👥</span> 멤버 관리
+    </a>
+    <a href="/admin/invite" class="nav-item {% if '/invite' in request.url.path %}active{% endif %}">
+      <span class="icon">📨</span> 초대 로그
+    </a>
+
+    <div class="nav-section">자판기</div>
+    <a href="/admin/shop" class="nav-item {% if '/shop' in request.url.path %}active{% endif %}">
+      <span class="icon">🏪</span> 자판기 관리
+    </a>
+
+    <div class="nav-section">설정</div>
+    <a href="/admin/settings" class="nav-item {% if '/settings' in request.url.path %}active{% endif %}">
+      <span class="icon">⚙️</span> 봇 설정
+    </a>
+  </nav>
+
+  <div class="sidebar-user">
+    <div class="user-avatar">{{ user.username[0].upper() }}</div>
+    <div class="user-info">
+      <div class="user-name">{{ user.username }}</div>
+      <div class="user-role">관리자</div>
+    </div>
+    <a href="/admin/logout" class="logout-btn" title="로그아웃">🚪</a>
+  </div>
+</aside>
+
+<!-- 메인 -->
+<main class="main">
+  <div class="topbar">
+    <div>
+      <div class="page-title">{% block page_title %}대시보드{% endblock %}</div>
+      <div class="page-sub">{% block page_sub %}{% endblock %}</div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      {% block topbar_actions %}{% endblock %}
+    </div>
+  </div>
+
+  <div class="content">
+    {% block content %}{% endblock %}
+  </div>
+</main>
+
+<!-- 토스트 -->
+<div id="toast"></div>
+
+<script>
+// 서버 선택 저장
+function setGuild(gid) {
+  document.cookie = `guild_id=${gid};path=/;max-age=86400`;
+  location.reload();
+}
+window.GUILD_ID = document.cookie.match(/guild_id=([^;]+)/)?.[1] || "";
+
+// 토스트 알림
+function toast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `show ${type}`;
+  setTimeout(() => t.className = '', 3000);
+}
+
+// API 헬퍼
+async function api(method, url, body) {
+  const r = await fetch(url, {
+    method,
+    headers: body ? {'Content-Type':'application/json'} : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({detail: '오류 발생'}));
+    throw new Error(err.detail || '오류 발생');
+  }
+  return r.json();
+}
+
+// 확인 모달
+function confirm2(msg) {
+  return new Promise(resolve => {
+    if (window.confirm(msg)) resolve(true); else resolve(false);
+  });
+}
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}백업 관리 — RecoveryBot{% endblock %}
+{% block page_title %}💾 백업 관리{% endblock %}
+{% block page_sub %}서버 백업 목록 조회 및 복구 코드 관리{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-title">💾 백업 목록</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>서버명</th>
+          <th>라벨</th>
+          <th>생성일시</th>
+          <th>작업</th>
+        </tr>
+      </thead>
+      <tbody id="backupTable">
+        <tr><td colspan="5" style="text-align:center;color:#8e9297;padding:32px">데이터 로딩 중...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 삭제 확인 모달 -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <div class="modal-title">🗑️ 백업 삭제</div>
+    <p style="color:#DCDDDE;font-size:14px;line-height:1.6">
+      정말로 이 백업을 삭제하시겠습니까?<br>
+      <span style="color:#ED4245">삭제된 데이터는 복구할 수 없습니다.</span>
+    </p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('deleteModal')">취소</button>
+      <button class="btn btn-danger" id="deleteConfirmBtn">삭제</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let pendingDeleteId = null;
+
+async function loadBackups() {
+  const gid = window.GUILD_ID;
+  const tb = document.getElementById('backupTable');
+  if (!gid) {
+    tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#8e9297;padding:32px">← 왼쪽에서 서버를 선택하세요</td></tr>';
+    return;
+  }
+  try {
+    const data = await api('GET', `/api/backups?guild_id=${gid}`);
+    if (!data.length) {
+      tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#8e9297;padding:32px">백업이 없습니다. 디스코드에서 <code>/backup save</code>를 실행하세요.</td></tr>';
+      return;
+    }
+    tb.innerHTML = data.map(b => `
+      <tr>
+        <td><span class="badge badge-blue">#${b.id}</span></td>
+        <td style="font-weight:600;color:#fff">${b.guild_name}</td>
+        <td>${b.label || '<span style="color:#8e9297">-</span>'}</td>
+        <td style="color:#8e9297;font-size:12px">${b.created_at}</td>
+        <td>
+          <button class="btn btn-danger btn-sm" onclick="confirmDelete(${b.id})">🗑️ 삭제</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch(e) {
+    tb.innerHTML = `<tr><td colspan="5" style="color:#ED4245;padding:20px">${e.message}</td></tr>`;
+  }
+}
+
+function confirmDelete(id) {
+  pendingDeleteId = id;
+  document.getElementById('deleteModal').classList.add('open');
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+document.getElementById('deleteConfirmBtn').onclick = async () => {
+  if (!pendingDeleteId) return;
+  try {
+    await api('DELETE', `/api/backups/${pendingDeleteId}`);
+    toast('백업이 삭제되었습니다.', 'success');
+    closeModal('deleteModal');
+    loadBackups();
+  } catch(e) {
+    toast('삭제 실패: ' + e.message, 'error');
+  }
+};
+
+loadBackups();
+</script>
+{% endblock %}

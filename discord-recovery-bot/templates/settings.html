@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}설정 — RecoveryBot{% endblock %}
+{% block page_title %}⚙️ 봇 설정{% endblock %}
+{% block page_sub %}디스코드 봇 사용 가이드 및 설정 안내{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+
+  <!-- 슬래시 커맨드 목록 -->
+  <div class="card">
+    <div class="card-title">🤖 슬래시 커맨드 목록</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      {% set cmds = [
+        ("💾 /backup save",     "현재 서버 백업 저장"),
+        ("📋 /backup list",     "백업 목록 확인"),
+        ("🔄 /restore latest",  "최근 백업으로 복구"),
+        ("🔄 /restore id",      "특정 ID 백업으로 복구"),
+        ("🛡️ /autorecovery enable", "자동 복구 활성화"),
+        ("⏱️ /autobackup enable",   "자동 백업 활성화"),
+        ("⚡ /autobackup now",  "즉시 백업"),
+        ("🔐 /auth setup",      "인증 채널 설정"),
+        ("📌 /auth panel",      "인증 버튼 패널 전송"),
+        ("📊 /server status",   "서버 인원 현황"),
+        ("🏆 /invite top",      "초대 순위"),
+        ("📨 /invite info",     "내 초대 현황"),
+        ("🏪 /shop setup",      "자판기 채널 설정"),
+        ("📌 /shop panel",      "자판기 패널 전송"),
+        ("💰 /shop give",       "포인트 지급 (관리자)"),
+        ("💸 /shop take",       "포인트 차감 (관리자)"),
+      ] %}
+      {% for cmd, desc in cmds %}
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--card2);border-radius:6px">
+        <code style="color:#a5b4fc;font-size:13px">{{ cmd }}</code>
+        <span style="color:#8e9297;font-size:12px">{{ desc }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:20px">
+    <!-- Render 환경 변수 설정 -->
+    <div class="card">
+      <div class="card-title">🔧 Render 환경 변수</div>
+      <div style="font-size:13px;line-height:1.8;color:#DCDDDE">
+        <p style="color:#8e9297;margin-bottom:12px">Render 대시보드 → Environment 탭에서 아래 변수들을 설정하세요:</p>
+        {% set envs = [
+          ("BOT_TOKEN",          "디스코드 봇 토큰",          "#ED4245"),
+          ("CLIENT_ID",          "디스코드 앱 클라이언트 ID",  "#ED4245"),
+          ("CLIENT_SECRET",      "디스코드 앱 시크릿",         "#ED4245"),
+          ("REDIRECT_URI",       "https://도메인/callback",    "#FAA61A"),
+          ("ADMIN_REDIRECT_URI", "https://도메인/admin/callback","#FAA61A"),
+          ("LOG_CHANNEL_ID",     "로그 채널 ID (선택)",        "#57F287"),
+          ("AUTO_BACKUP_INTERVAL","21600 (6시간, 선택)",       "#57F287"),
+        ] %}
+        {% for key, desc, color in envs %}
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <code style="background:var(--card2);color:{{ color }};padding:3px 8px;border-radius:4px;font-size:12px;min-width:190px">{{ key }}</code>
+          <span style="color:#8e9297;font-size:12px">{{ desc }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- 초기 설정 순서 -->
+    <div class="card">
+      <div class="card-title">🚀 초기 설정 순서</div>
+      <ol style="padding-left:18px;color:#DCDDDE;font-size:13px;line-height:2">
+        <li>봇을 서버에 초대 (관리자 권한)</li>
+        <li><code style="color:#a5b4fc">/backup save</code> — 첫 번째 백업 생성</li>
+        <li><code style="color:#a5b4fc">/autobackup enable</code> — 자동 백업 켜기</li>
+        <li><code style="color:#a5b4fc">/autorecovery enable</code> — 자동 복구 켜기</li>
+        <li><code style="color:#a5b4fc">/auth setup</code> — 인증 채널 설정</li>
+        <li><code style="color:#a5b4fc">/auth panel</code> — 인증 버튼 전송</li>
+        <li><code style="color:#a5b4fc">/shop setup</code> — 자판기 채널 설정</li>
+        <li><code style="color:#a5b4fc">/shop panel</code> — 자판기 패널 전송</li>
+        <li>웹 패널에서 상품 등록 후 완료! ✅</li>
+      </ol>
+    </div>
+
+    <!-- 서버 복구 방법 -->
+    <div class="card" style="border-color:rgba(237,66,69,.4)">
+      <div class="card-title" style="color:#ED4245">🚨 서버 복구 방법</div>
+      <ol style="padding-left:18px;color:#DCDDDE;font-size:13px;line-height:2">
+        <li>새 디스코드 서버 생성</li>
+        <li>봇을 새 서버에 초대 (관리자 권한)</li>
+        <li><code style="color:#a5b4fc">/restore latest</code> 입력</li>
+        <li>채널·역할이 자동 복구됩니다</li>
+        <li>웹 패널 → 멤버 관리 → <strong>"전원 재참가"</strong> 클릭</li>
+        <li>인증한 멤버들이 자동으로 재참가합니다 ✅</li>
+      </ol>
+      <div style="margin-top:12px;padding:10px;background:rgba(237,66,69,.1);border-radius:6px;font-size:12px;color:#ED4245">
+        ⚠️ 재참가는 인증 버튼을 눌러 OAuth2 토큰이 저장된 멤버만 가능합니다.
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RecoveryBot 관리 패널 로그인</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a1c1f;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:'Segoe UI',sans-serif}
+.card{background:#2C2F33;border-radius:16px;padding:48px 40px;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,.5);max-width:420px;width:90%;border:1px solid #3a3d44}
+.logo{font-size:56px;margin-bottom:8px}
+.brand{font-size:22px;font-weight:800;color:#fff;margin-bottom:4px}
+.sub{font-size:13px;color:#8e9297;margin-bottom:32px}
+.divider{height:1px;background:#3a3d44;margin:0 -40px 28px}
+.desc{font-size:14px;color:#DCDDDE;margin-bottom:24px;line-height:1.6}
+.login-btn{
+  display:flex;align-items:center;justify-content:center;gap:12px;
+  background:#5865F2;color:#fff;
+  padding:14px 32px;border-radius:8px;
+  font-size:15px;font-weight:700;text-decoration:none;
+  transition:background .15s;
+}
+.login-btn:hover{background:#4752c4}
+.login-btn .discord-icon{font-size:22px}
+.note{font-size:12px;color:#72767D;margin-top:20px;line-height:1.6}
+.error-msg{background:rgba(237,66,69,.15);border:1px solid rgba(237,66,69,.4);color:#ed4245;padding:10px 16px;border-radius:8px;font-size:13px;margin-bottom:20px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🛡️</div>
+  <div class="brand">RecoveryBot</div>
+  <div class="sub">서버 복구 & 관리 시스템</div>
+  <div class="divider"></div>
+
+  {% if request.query_params.get('error') %}
+  <div class="error-msg">⚠️ 로그인에 실패했습니다. 다시 시도해주세요.</div>
+  {% endif %}
+
+  <div class="desc">
+    관리 패널은 <strong>디스코드 관리자</strong>만 접근할 수 있습니다.<br>
+    아래 버튼을 눌러 디스코드 계정으로 로그인하세요.
+  </div>
+
+  <a class="login-btn" href="https://discord.com/api/oauth2/authorize?client_id={{ client_id }}&redirect_uri={{ redirect_uri | urlencode }}&response_type=code&scope=identify%20guilds">
+    <span class="discord-icon">💬</span>
+    Discord 로그인
+  </a>
+
+  <div class="note">
+    로그인 시 디스코드 계정 정보 및 서버 목록을 읽어옵니다.<br>
+    관리자 권한이 있는 서버만 관리 가능합니다.
+  </div>
+</div>
+</body>
+</html>

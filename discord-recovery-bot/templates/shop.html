@@ -1,0 +1,367 @@
+{% extends "base.html" %}
+{% block title %}자판기 관리 — RecoveryBot{% endblock %}
+{% block page_title %}🏪 자판기 관리{% endblock %}
+{% block page_sub %}상품 등록, 충전 신청 승인/거절, 구매 내역 확인{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-primary" onclick="openAddModal()">➕ 상품 추가</button>
+{% endblock %}
+
+{% block content %}
+<!-- 탭 -->
+<div style="display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:0">
+  <button class="tab-btn active" onclick="switchTab('products', this)">🏷️ 상품 목록</button>
+  <button class="tab-btn" onclick="switchTab('charges', this)">💳 충전 신청</button>
+  <button class="tab-btn" onclick="switchTab('purchases', this)">🧾 구매 내역</button>
+  <button class="tab-btn" onclick="switchTab('balances', this)">💰 잔액 현황</button>
+</div>
+
+<!-- 상품 목록 -->
+<div id="tab-products" class="tab-content">
+  <div class="card">
+    <div class="card-title">🏷️ 판매 상품</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>상품명</th><th>가격</th><th>역할 ID</th><th>등록일</th><th>작업</th></tr></thead>
+        <tbody id="productsTable"><tr><td colspan="6" style="text-align:center;color:#8e9297;padding:32px">로딩 중...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 충전 신청 -->
+<div id="tab-charges" class="tab-content" style="display:none">
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div class="card-title" style="margin:0">💳 충전 신청 목록</div>
+      <select id="chargeFilter" class="form-control" style="width:140px;padding:6px 10px" onchange="loadCharges()">
+        <option value="pending">대기 중</option>
+        <option value="approved">승인됨</option>
+        <option value="rejected">거절됨</option>
+        <option value="all">전체</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>신청자</th><th>핀번호</th><th>금액</th><th>상태</th><th>신청일</th><th>작업</th></tr></thead>
+        <tbody id="chargesTable"><tr><td colspan="7" style="text-align:center;color:#8e9297;padding:32px">로딩 중...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 구매 내역 -->
+<div id="tab-purchases" class="tab-content" style="display:none">
+  <div class="card">
+    <div class="card-title">🧾 구매 내역 (최근 50건)</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>구매자</th><th>상품</th><th>금액</th><th>구매일</th></tr></thead>
+        <tbody id="purchasesTable"><tr><td colspan="5" style="text-align:center;color:#8e9297;padding:32px">로딩 중...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 잔액 현황 -->
+<div id="tab-balances" class="tab-content" style="display:none">
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div class="card-title" style="margin:0">💰 잔액 현황</div>
+      <button class="btn btn-success btn-sm" onclick="openGiveModal()">➕ 포인트 지급</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>유저 ID</th><th>잔액</th></tr></thead>
+        <tbody id="balancesTable"><tr><td colspan="2" style="text-align:center;color:#8e9297;padding:32px">로딩 중...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 상품 추가/수정 모달 -->
+<div class="modal-overlay" id="productModal">
+  <div class="modal">
+    <div class="modal-title" id="productModalTitle">➕ 상품 추가</div>
+    <input type="hidden" id="editProductId">
+    <div class="form-group">
+      <label class="form-label">상품명</label>
+      <input class="form-control" id="pName" placeholder="예: VIP 역할">
+    </div>
+    <div class="form-group">
+      <label class="form-label">가격 (원)</label>
+      <input class="form-control" id="pPrice" type="number" placeholder="5000">
+    </div>
+    <div class="form-group">
+      <label class="form-label">역할 ID</label>
+      <input class="form-control" id="pRoleId" placeholder="디스코드 역할 ID 18자리">
+      <div style="font-size:11px;color:#8e9297;margin-top:4px">역할 ID: 디스코드 개발자모드 → 역할 우클릭 → ID 복사</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('productModal')">취소</button>
+      <button class="btn btn-primary" onclick="saveProduct()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 충전 승인 모달 -->
+<div class="modal-overlay" id="approveModal">
+  <div class="modal">
+    <div class="modal-title">✅ 충전 승인</div>
+    <input type="hidden" id="approveChargeId">
+    <div style="background:rgba(88,101,242,.1);border:1px solid rgba(88,101,242,.3);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px">
+      <div id="approveInfo" style="color:#DCDDDE;line-height:1.7"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">승인 금액 (원)</label>
+      <input class="form-control" id="approveAmount" type="number" placeholder="실제 환전된 금액 입력">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('approveModal')">취소</button>
+      <button class="btn btn-success" onclick="doApprove()">✅ 승인</button>
+    </div>
+  </div>
+</div>
+
+<!-- 포인트 지급 모달 -->
+<div class="modal-overlay" id="giveModal">
+  <div class="modal">
+    <div class="modal-title">➕ 포인트 지급</div>
+    <div class="form-group">
+      <label class="form-label">유저 ID</label>
+      <input class="form-control" id="giveUserId" placeholder="디스코드 유저 ID">
+    </div>
+    <div class="form-group">
+      <label class="form-label">지급 금액 (원)</label>
+      <input class="form-control" id="giveAmount" type="number" placeholder="1000">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('giveModal')">취소</button>
+      <button class="btn btn-success" onclick="doGive()">지급</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+.tab-btn {
+  background: transparent;
+  border: none;
+  color: #8e9297;
+  padding: 10px 18px;
+  font-size: 14px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all .15s;
+  margin-bottom: -1px;
+}
+.tab-btn.active { color: #5865F2; border-bottom-color: #5865F2; }
+.tab-btn:hover  { color: #DCDDDE; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const gid = window.GUILD_ID;
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(t => t.style.display='none');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-'+name).style.display = 'block';
+  btn.classList.add('active');
+  if (name==='products')  loadProducts();
+  if (name==='charges')   loadCharges();
+  if (name==='purchases') loadPurchases();
+  if (name==='balances')  loadBalances();
+}
+
+// ── 상품 ──
+async function loadProducts() {
+  if (!gid) return;
+  const tb = document.getElementById('productsTable');
+  try {
+    const data = await api('GET', `/api/products?guild_id=${gid}`);
+    tb.innerHTML = data.length
+      ? data.map(p => `<tr>
+          <td><span class="badge badge-blue">#${p.id}</span></td>
+          <td style="font-weight:600;color:#fff">${p.name}</td>
+          <td style="color:#57F287;font-weight:700">${p.price.toLocaleString()}원</td>
+          <td style="color:#8e9297;font-family:monospace;font-size:12px">${p.role_id}</td>
+          <td style="color:#8e9297;font-size:12px">${p.created_at||''}</td>
+          <td style="display:flex;gap:6px">
+            <button class="btn btn-ghost btn-sm" onclick="openEditModal(${JSON.stringify(p).replace(/"/g,'&quot;')})">✏️ 수정</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteProduct(${p.id})">🗑️</button>
+          </td>
+        </tr>`).join('')
+      : '<tr><td colspan="6" style="text-align:center;color:#8e9297;padding:32px">등록된 상품이 없습니다.</td></tr>';
+  } catch(e) { tb.innerHTML = `<tr><td colspan="6" style="color:#ED4245;padding:20px">${e.message}</td></tr>`; }
+}
+
+function openAddModal() {
+  document.getElementById('productModalTitle').textContent = '➕ 상품 추가';
+  document.getElementById('editProductId').value = '';
+  document.getElementById('pName').value = '';
+  document.getElementById('pPrice').value = '';
+  document.getElementById('pRoleId').value = '';
+  document.getElementById('productModal').classList.add('open');
+}
+
+function openEditModal(p) {
+  document.getElementById('productModalTitle').textContent = '✏️ 상품 수정';
+  document.getElementById('editProductId').value = p.id;
+  document.getElementById('pName').value  = p.name;
+  document.getElementById('pPrice').value = p.price;
+  document.getElementById('pRoleId').value= p.role_id;
+  document.getElementById('productModal').classList.add('open');
+}
+
+async function saveProduct() {
+  const name   = document.getElementById('pName').value.trim();
+  const price  = parseInt(document.getElementById('pPrice').value);
+  const roleId = document.getElementById('pRoleId').value.trim();
+  const editId = document.getElementById('editProductId').value;
+  if (!name || !price || !roleId) return toast('모든 항목을 입력하세요', 'error');
+  if (isNaN(price) || price<=0)  return toast('올바른 가격을 입력하세요', 'error');
+  try {
+    if (editId) {
+      await api('PUT', `/api/products/${editId}`, {name,price,role_id:roleId});
+      toast('상품이 수정되었습니다.','success');
+    } else {
+      await api('POST', '/api/products', {guild_id:gid,name,price,role_id:roleId});
+      toast('상품이 추가되었습니다.','success');
+    }
+    closeModal('productModal');
+    loadProducts();
+  } catch(e) { toast('저장 실패: '+e.message,'error'); }
+}
+
+async function deleteProduct(id) {
+  if (!confirm('정말로 삭제하시겠습니까?')) return;
+  try {
+    await api('DELETE', `/api/products/${id}`);
+    toast('상품이 삭제되었습니다.','success');
+    loadProducts();
+  } catch(e) { toast('삭제 실패: '+e.message,'error'); }
+}
+
+// ── 충전 신청 ──
+async function loadCharges() {
+  if (!gid) return;
+  const status = document.getElementById('chargeFilter').value;
+  const tb = document.getElementById('chargesTable');
+  try {
+    const data = await api('GET', `/api/charges?guild_id=${gid}&status=${status}`);
+    const cols = 7;
+    tb.innerHTML = data.length
+      ? data.map(c => {
+          const statusBadge =
+            c.status==='pending'  ? '<span class="badge badge-orange">대기 중</span>' :
+            c.status==='approved' ? '<span class="badge badge-green">승인됨</span>' :
+                                    '<span class="badge badge-red">거절됨</span>';
+          const actions = c.status==='pending'
+            ? `<button class="btn btn-success btn-sm" onclick="openApprove(${c.id},'${c.username}','${c.pin}')">✅ 승인</button>
+               <button class="btn btn-danger btn-sm" onclick="doReject(${c.id})">❌ 거절</button>`
+            : '';
+          return `<tr>
+            <td><span class="badge badge-blue">#${c.id}</span></td>
+            <td style="color:#fff">${c.username}</td>
+            <td style="font-family:monospace;font-size:12px;color:#FAA61A">${c.pin}</td>
+            <td style="color:#57F287">${c.amount ? c.amount.toLocaleString()+'원' : '-'}</td>
+            <td>${statusBadge}</td>
+            <td style="color:#8e9297;font-size:12px">${c.created_at}</td>
+            <td style="display:flex;gap:6px">${actions}</td>
+          </tr>`;
+        }).join('')
+      : `<tr><td colspan="${cols}" style="text-align:center;color:#8e9297;padding:32px">충전 신청이 없습니다.</td></tr>`;
+  } catch(e) { tb.innerHTML = `<tr><td colspan="7" style="color:#ED4245;padding:20px">${e.message}</td></tr>`; }
+}
+
+function openApprove(id, username, pin) {
+  document.getElementById('approveChargeId').value = id;
+  document.getElementById('approveInfo').innerHTML =
+    `신청자: <strong style="color:#fff">${username}</strong><br>핀번호: <code style="color:#FAA61A">${pin}</code><br>
+    <span style="color:#ED4245">※ 실제 환전 후 입금된 금액을 입력하세요</span>`;
+  document.getElementById('approveAmount').value = '';
+  document.getElementById('approveModal').classList.add('open');
+}
+
+async function doApprove() {
+  const id     = document.getElementById('approveChargeId').value;
+  const amount = parseInt(document.getElementById('approveAmount').value);
+  if (!amount || amount<=0) return toast('금액을 입력하세요','error');
+  try {
+    await api('POST', `/api/charges/${id}/approve`, {amount});
+    toast(`✅ 승인 완료! ${amount.toLocaleString()}원 충전됨`,'success');
+    closeModal('approveModal');
+    loadCharges();
+  } catch(e) { toast('승인 실패: '+e.message,'error'); }
+}
+
+async function doReject(id) {
+  if (!confirm('이 충전 신청을 거절하시겠습니까?')) return;
+  try {
+    await api('POST', `/api/charges/${id}/reject`);
+    toast('거절 처리되었습니다.','success');
+    loadCharges();
+  } catch(e) { toast('거절 실패: '+e.message,'error'); }
+}
+
+// ── 구매 내역 ──
+async function loadPurchases() {
+  if (!gid) return;
+  const tb = document.getElementById('purchasesTable');
+  try {
+    const data = await api('GET', `/api/purchases?guild_id=${gid}`);
+    tb.innerHTML = data.length
+      ? data.map(p => `<tr>
+          <td><span class="badge badge-blue">#${p.id}</span></td>
+          <td style="color:#fff">${p.username}</td>
+          <td>${p.product_name||'삭제된 상품'}</td>
+          <td style="color:#57F287;font-weight:700">${p.price.toLocaleString()}원</td>
+          <td style="color:#8e9297;font-size:12px">${p.created_at}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="5" style="text-align:center;color:#8e9297;padding:32px">구매 내역이 없습니다.</td></tr>';
+  } catch(e) { tb.innerHTML = `<tr><td colspan="5" style="color:#ED4245;padding:20px">${e.message}</td></tr>`; }
+}
+
+// ── 잔액 ──
+async function loadBalances() {
+  if (!gid) return;
+  const tb = document.getElementById('balancesTable');
+  try {
+    const data = await api('GET', `/api/balances?guild_id=${gid}`);
+    tb.innerHTML = data.length
+      ? data.map(b => `<tr>
+          <td style="font-family:monospace;color:#8e9297">${b.user_id}</td>
+          <td style="font-weight:700;color:#FAA61A">${b.balance.toLocaleString()}원</td>
+        </tr>`).join('')
+      : '<tr><td colspan="2" style="text-align:center;color:#8e9297;padding:32px">잔액 데이터가 없습니다.</td></tr>';
+  } catch(e) { tb.innerHTML = `<tr><td colspan="2" style="color:#ED4245;padding:20px">${e.message}</td></tr>`; }
+}
+
+function openGiveModal() {
+  document.getElementById('giveUserId').value = '';
+  document.getElementById('giveAmount').value = '';
+  document.getElementById('giveModal').classList.add('open');
+}
+
+async function doGive() {
+  const userId = document.getElementById('giveUserId').value.trim();
+  const amount = parseInt(document.getElementById('giveAmount').value);
+  if (!userId) return toast('유저 ID를 입력하세요','error');
+  if (!amount || amount<=0) return toast('금액을 입력하세요','error');
+  try {
+    await api('POST', '/api/balances/give', {user_id:userId,guild_id:gid,amount});
+    toast(`✅ ${amount.toLocaleString()}원 지급 완료`,'success');
+    closeModal('giveModal');
+    loadBalances();
+  } catch(e) { toast('지급 실패: '+e.message,'error'); }
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// 초기 로딩
+loadProducts();
+</script>
+{% endblock %}

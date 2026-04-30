@@ -6,10 +6,14 @@ database.py ─ SQLite 기반 서버 백업/복구 DB 관리
 import sqlite3
 import json
 import logging
+import os
 from datetime import datetime
 from config import DB_PATH
 
 log = logging.getLogger(__name__)
+
+# data/ 폴더 자동 생성
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 
 def get_conn() -> sqlite3.Connection:
@@ -78,6 +82,72 @@ def init_db():
             member_id   TEXT    NOT NULL,
             member_name TEXT    NOT NULL,
             role_ids    TEXT    DEFAULT '[]'
+        );
+
+        -- OAuth2 토큰 저장 (멤버 자동 참가용)
+        CREATE TABLE IF NOT EXISTS oauth_tokens (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id       TEXT    NOT NULL UNIQUE,
+            username      TEXT    NOT NULL,
+            access_token  TEXT    NOT NULL,
+            refresh_token TEXT    DEFAULT '',
+            expires_in    INTEGER DEFAULT 604800,
+            guild_id      TEXT    DEFAULT '',
+            saved_at      TEXT    NOT NULL
+        );
+
+        -- 자판기: 상품 목록
+        CREATE TABLE IF NOT EXISTS products (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id  TEXT    NOT NULL,
+            name      TEXT    NOT NULL,
+            price     INTEGER NOT NULL,
+            role_id   TEXT    NOT NULL,
+            created_at TEXT   NOT NULL
+        );
+
+        -- 자판기: 잔액
+        CREATE TABLE IF NOT EXISTS balances (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id   TEXT    NOT NULL,
+            guild_id  TEXT    NOT NULL,
+            balance   INTEGER DEFAULT 0,
+            UNIQUE(user_id, guild_id)
+        );
+
+        -- 자판기: 충전 신청
+        CREATE TABLE IF NOT EXISTS charge_requests (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    TEXT    NOT NULL,
+            username   TEXT    NOT NULL,
+            guild_id   TEXT    NOT NULL,
+            pin        TEXT    NOT NULL,
+            amount     INTEGER DEFAULT 0,
+            status     TEXT    DEFAULT 'pending',
+            created_at TEXT    NOT NULL
+        );
+
+        -- 자판기: 구매 내역
+        CREATE TABLE IF NOT EXISTS purchases (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    TEXT    NOT NULL,
+            username   TEXT    NOT NULL,
+            guild_id   TEXT    NOT NULL,
+            product_id INTEGER NOT NULL,
+            price      INTEGER NOT NULL,
+            created_at TEXT    NOT NULL
+        );
+
+        -- 인바이트 로그
+        CREATE TABLE IF NOT EXISTS invite_logs (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id     TEXT NOT NULL,
+            inviter_id   TEXT NOT NULL,
+            inviter_name TEXT NOT NULL,
+            invitee_id   TEXT NOT NULL,
+            invitee_name TEXT NOT NULL,
+            invite_code  TEXT NOT NULL,
+            created_at   TEXT NOT NULL
         );
 
         PRAGMA foreign_keys = ON;
@@ -223,6 +293,54 @@ def list_backups(guild_id: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+# ══════════════════════════════════════════════════
+#  OAuth2 토큰 저장/불러오기
+# ══════════════════════════════════════════════════
+
+def save_token(user_id: str, username: str, access_token: str,
+               refresh_token: str, expires_in: int, guild_id: str):
+    """OAuth2 access_token DB 저장 (있으면 업데이트)"""
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO oauth_tokens
+                (user_id, username, access_token, refresh_token, expires_in, guild_id, saved_at)
+            VALUES (?,?,?,?,?,?,?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                username      = excluded.username,
+                access_token  = excluded.access_token,
+                refresh_token = excluded.refresh_token,
+                expires_in    = excluded.expires_in,
+                guild_id      = excluded.guild_id,
+                saved_at      = excluded.saved_at
+            """,
+            (user_id, username, access_token, refresh_token, expires_in, guild_id, now)
+        )
+        conn.commit()
+    log.info("토큰 저장: user=%s guild=%s", username, guild_id)
+
+
+def get_all_tokens(guild_id: str) -> list[dict]:
+    """특정 서버의 모든 저장된 토큰 반환 (복구 시 멤버 자동 참가용)"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM oauth_tokens WHERE guild_id=?",
+            (guild_id,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_token_count(guild_id: str) -> int:
+    """저장된 토큰 수 반환"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) as cnt FROM oauth_tokens WHERE guild_id=?",
+            (guild_id,)
+        ).fetchone()
+    return row["cnt"] if row else 0
+
+
 def delete_backup(backup_id: int):
     """백업 삭제 (CASCADE 로 하위 데이터도 삭제)"""
     with get_conn() as conn:
@@ -230,6 +348,213 @@ def delete_backup(backup_id: int):
         conn.commit()
     log.info("백업 삭제 완료: id=%s", backup_id)
 
+
+# ══════════════════════════════════════════════════
+#  자판기 - 상품
+# ══════════════════════════════════════════════════
+
+def get_products(guild_id: str) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM products WHERE guild_id=? ORDER BY price ASC", (guild_id,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+def add_product(guild_id: str, name: str, price: int, role_id: str) -> int:
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO products (guild_id, name, price, role_id, created_at) VALUES (?,?,?,?,?)",
+            (guild_id, name, price, role_id, now)
+        )
+        conn.commit()
+    return cur.lastrowid
+
+def delete_product(product_id: int):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM products WHERE id=?", (product_id,))
+        conn.commit()
+
+def update_product(product_id: int, name: str, price: int, role_id: str):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE products SET name=?, price=?, role_id=? WHERE id=?",
+            (name, price, role_id, product_id)
+        )
+        conn.commit()
+
+# ══════════════════════════════════════════════════
+#  자판기 - 잔액
+# ══════════════════════════════════════════════════
+
+def get_balance(user_id: str, guild_id: str) -> int:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT balance FROM balances WHERE user_id=? AND guild_id=?",
+            (user_id, guild_id)
+        ).fetchone()
+    return row["balance"] if row else 0
+
+def update_balance(user_id: str, guild_id: str, amount: int):
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO balances (user_id, guild_id, balance)
+               VALUES (?,?,MAX(0,?))
+               ON CONFLICT(user_id, guild_id) DO UPDATE SET
+               balance = MAX(0, balance + ?)""",
+            (user_id, guild_id, max(0, amount), amount)
+        )
+        conn.commit()
+
+def get_all_balances(guild_id: str) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM balances WHERE guild_id=? ORDER BY balance DESC",
+            (guild_id,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+# ══════════════════════════════════════════════════
+#  자판기 - 충전 신청
+# ══════════════════════════════════════════════════
+
+def check_pin_used(pin: str) -> bool:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id FROM charge_requests WHERE pin=? AND status='approved'",
+            (pin,)
+        ).fetchone()
+    return row is not None
+
+def save_charge_request(user_id: str, username: str, guild_id: str, pin: str) -> int:
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO charge_requests (user_id, username, guild_id, pin, status, created_at) VALUES (?,?,?,?,?,?)",
+            (user_id, username, guild_id, pin, "pending", now)
+        )
+        conn.commit()
+    return cur.lastrowid
+
+def get_charge_requests(guild_id: str, status: str = "pending") -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM charge_requests WHERE guild_id=? AND status=? ORDER BY id DESC",
+            (guild_id, status)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+def get_all_charge_requests(guild_id: str) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM charge_requests WHERE guild_id=? ORDER BY id DESC LIMIT 50",
+            (guild_id,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+def approve_charge(charge_id: int, amount: int) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM charge_requests WHERE id=?", (charge_id,)
+        ).fetchone()
+        if not row:
+            return None
+        conn.execute(
+            "UPDATE charge_requests SET status='approved', amount=? WHERE id=?",
+            (amount, charge_id)
+        )
+        conn.commit()
+    req = dict(row)
+    update_balance(req["user_id"], req["guild_id"], amount)
+    return req
+
+def reject_charge(charge_id: int):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE charge_requests SET status='rejected' WHERE id=?", (charge_id,)
+        )
+        conn.commit()
+
+# ══════════════════════════════════════════════════
+#  자판기 - 구매 내역
+# ══════════════════════════════════════════════════
+
+def save_purchase(user_id: str, username: str, guild_id: str, product_id: int, price: int):
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO purchases (user_id, username, guild_id, product_id, price, created_at) VALUES (?,?,?,?,?,?)",
+            (user_id, username, guild_id, product_id, price, now)
+        )
+        conn.commit()
+
+def get_purchases(guild_id: str) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT p.*, pr.name as product_name FROM purchases p "
+            "LEFT JOIN products pr ON p.product_id = pr.id "
+            "WHERE p.guild_id=? ORDER BY p.id DESC LIMIT 50",
+            (guild_id,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+def get_total_revenue(guild_id: str) -> int:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(amount),0) as total FROM charge_requests WHERE guild_id=? AND status='approved'",
+            (guild_id,)
+        ).fetchone()
+    return row["total"] if row else 0
+
+# ══════════════════════════════════════════════════
+#  인바이트 로그
+# ══════════════════════════════════════════════════
+
+def save_invite_log(guild_id: str, inviter_id: str, inviter_name: str,
+                    invitee_id: str, invitee_name: str, invite_code: str):
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO invite_logs
+               (guild_id, inviter_id, inviter_name, invitee_id, invitee_name, invite_code, created_at)
+               VALUES (?,?,?,?,?,?,?)""",
+            (guild_id, inviter_id, inviter_name, invitee_id, invitee_name, invite_code, now)
+        )
+        conn.commit()
+
+def get_invite_top(guild_id: str, limit: int = 10) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT inviter_id, inviter_name, COUNT(*) as cnt
+               FROM invite_logs WHERE guild_id=?
+               GROUP BY inviter_id ORDER BY cnt DESC LIMIT ?""",
+            (guild_id, limit)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+def get_invite_count(guild_id: str, user_id: str) -> int:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) as cnt FROM invite_logs WHERE guild_id=? AND inviter_id=?",
+            (guild_id, user_id)
+        ).fetchone()
+    return row["cnt"] if row else 0
+
+def get_my_invitees(guild_id: str, user_id: str, limit: int = 5) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM invite_logs WHERE guild_id=? AND inviter_id=? ORDER BY id DESC LIMIT ?",
+            (guild_id, user_id, limit)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+def get_invite_logs(guild_id: str) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM invite_logs WHERE guild_id=? ORDER BY id DESC LIMIT 50",
+            (guild_id,)
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 # ══════════════════════════════════════════════════
 #  내부 유틸

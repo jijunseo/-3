@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}대시보드 — RecoveryBot{% endblock %}
+{% block page_title %}📊 대시보드{% endblock %}
+{% block page_sub %}서버 전체 현황을 한눈에 확인하세요{% endblock %}
+
+{% block content %}
+<!-- 서버 미선택 안내 -->
+<div id="noGuild" style="display:none" class="card" style="text-align:center;padding:40px">
+  <div style="font-size:48px;margin-bottom:12px">👆</div>
+  <div style="font-size:16px;color:#fff;font-weight:700;margin-bottom:8px">서버를 선택하세요</div>
+  <div style="color:#8e9297;font-size:14px">왼쪽 사이드바에서 관리할 서버를 선택하면 통계가 표시됩니다.</div>
+</div>
+
+<div id="dashboard">
+  <!-- 통계 카드 -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-icon">💾</div>
+      <div class="stat-value" id="statBackup">—</div>
+      <div class="stat-label">저장된 백업</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">👥</div>
+      <div class="stat-value" id="statTokens">—</div>
+      <div class="stat-label">인증된 멤버</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">🏪</div>
+      <div class="stat-value" id="statProducts">—</div>
+      <div class="stat-label">판매 상품</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">💰</div>
+      <div class="stat-value" id="statRevenue">—</div>
+      <div class="stat-label">총 충전 금액</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <!-- 최근 백업 -->
+    <div class="card">
+      <div class="card-title">💾 최근 백업</div>
+      <div id="latestBackup" style="color:#8e9297;font-size:13px">데이터 로딩 중...</div>
+    </div>
+
+    <!-- 빠른 메뉴 -->
+    <div class="card">
+      <div class="card-title">⚡ 빠른 메뉴</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <a href="/admin/backup" class="btn btn-primary">💾 백업 관리하기</a>
+        <a href="/admin/shop" class="btn btn-success">🏪 충전 신청 확인</a>
+        <a href="/admin/members" class="btn btn-ghost">👥 멤버 재참가</a>
+        <a href="/admin/invite" class="btn btn-ghost">📨 초대 순위 보기</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadDashboard() {
+  const gid = window.GUILD_ID;
+  const noG = document.getElementById('noGuild');
+  const dash = document.getElementById('dashboard');
+
+  if (!gid) {
+    noG.style.display = 'block';
+    dash.style.display = 'none';
+    return;
+  }
+  noG.style.display = 'none';
+  dash.style.display = 'block';
+
+  try {
+    const data = await api('GET', `/api/dashboard?guild_id=${gid}`);
+    document.getElementById('statBackup').textContent   = data.backup_count;
+    document.getElementById('statTokens').textContent   = data.token_count;
+    document.getElementById('statProducts').textContent = data.product_count;
+    document.getElementById('statRevenue').textContent  = `${(data.revenue||0).toLocaleString()}원`;
+
+    const lb = data.latest_backup;
+    document.getElementById('latestBackup').innerHTML = lb
+      ? `<div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:8px">#${lb.id} ${lb.label||'자동 백업'}</div>
+         <div style="color:#8e9297;font-size:12px">📅 ${lb.created_at}</div>
+         <div style="color:#8e9297;font-size:12px;margin-top:4px">서버: ${lb.guild_name}</div>
+         <a href="/admin/backup" class="btn btn-ghost btn-sm" style="margin-top:12px">전체 목록 →</a>`
+      : '<div style="color:#8e9297">아직 백업이 없습니다.<br>디스코드에서 <code>/backup save</code>를 실행하세요.</div>';
+  } catch(e) {
+    toast('대시보드 로딩 실패: ' + e.message, 'error');
+  }
+}
+loadDashboard();
+</script>
+{% endblock %}
