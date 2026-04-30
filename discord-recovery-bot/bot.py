@@ -1,0 +1,113 @@
+"""
+bot.py ─ RecoveryBot 메인 진입점
+실행: python bot.py
+"""
+
+import asyncio
+import logging
+import os
+import sys
+import discord
+from discord.ext import commands
+
+# ── 로그 설정 ─────────────────────────────────────
+os.makedirs("logs", exist_ok=True)
+logging.basicConfig(
+    level   = logging.INFO,
+    format  = "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers = [
+        logging.FileHandler("logs/bot.log", encoding="utf-8"),
+        logging.StreamHandler(sys.stdout),
+    ]
+)
+log = logging.getLogger("RecoveryBot")
+
+# ── config & DB ────────────────────────────────────
+from config import BOT_TOKEN, PREFIX
+import database as db
+
+# ── Cogs 목록 ──────────────────────────────────────
+COGS = [
+    "cogs.backup_cog",
+    "cogs.restore_cog",
+    "cogs.auto_recovery_cog",
+    "cogs.auto_backup_cog",
+]
+
+# ══════════════════════════════════════════════════
+#  Bot 클래스
+# ══════════════════════════════════════════════════
+
+class RecoveryBot(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.members      = True   # 멤버 목록 필요
+        intents.guilds       = True
+        intents.message_content = True
+
+        super().__init__(
+            command_prefix  = PREFIX,
+            intents         = intents,
+            help_command    = None,
+        )
+
+    async def setup_hook(self):
+        # DB 초기화
+        db.init_db()
+
+        # Cogs 로드
+        for cog in COGS:
+            try:
+                await self.load_extension(cog)
+                log.info("✅ Cog 로드: %s", cog)
+            except Exception as e:
+                log.error("❌ Cog 로드 실패: %s — %s", cog, e)
+
+        # 슬래시 커맨드 동기화
+        synced = await self.tree.sync()
+        log.info("🔄 슬래시 커맨드 동기화 완료: %d개", len(synced))
+
+    async def on_ready(self):
+        log.info("=" * 50)
+        log.info("✅ RecoveryBot 온라인!")
+        log.info("   봇 이름 : %s#%s", self.user.name, self.user.discriminator)
+        log.info("   봇 ID   : %s", self.user.id)
+        log.info("   서버 수  : %d개", len(self.guilds))
+        log.info("=" * 50)
+
+        await self.change_presence(
+            activity = discord.Activity(
+                type = discord.ActivityType.watching,
+                name = "서버 보호 중 🛡️"
+            )
+        )
+
+    async def on_guild_join(self, guild: discord.Guild):
+        log.info("새 서버 참가: %s (id=%s)", guild.name, guild.id)
+
+    async def on_command_error(self, ctx, error):
+        if isinstance(error, commands.MissingPermissions):
+            await ctx.send("❌ 권한이 없습니다.")
+        elif isinstance(error, commands.CommandNotFound):
+            pass
+        else:
+            log.error("커맨드 오류: %s", error)
+
+
+# ══════════════════════════════════════════════════
+#  실행
+# ══════════════════════════════════════════════════
+
+async def main():
+    if not BOT_TOKEN or BOT_TOKEN == "여기에_봇_토큰_입력":
+        log.critical("❌ BOT_TOKEN 이 설정되지 않았습니다!")
+        log.critical("   .env 파일에 BOT_TOKEN=your_token_here 를 추가하세요.")
+        sys.exit(1)
+
+    bot = RecoveryBot()
+    async with bot:
+        await bot.start(BOT_TOKEN)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
