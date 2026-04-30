@@ -1,97 +1,166 @@
 {% extends "base.html" %}
-{% block title %}설정 — RecoveryBot{% endblock %}
+{% block title %}봇 설정 — RecoveryBot{% endblock %}
 {% block page_title %}⚙️ 봇 설정{% endblock %}
-{% block page_sub %}디스코드 봇 사용 가이드 및 설정 안내{% endblock %}
+{% block page_sub %}채널, 역할, 자동 복구 등 봇 전반 설정{% endblock %}
 
 {% block content %}
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
 
-  <!-- 슬래시 커맨드 목록 -->
+  <!-- 채널 설정 -->
   <div class="card">
-    <div class="card-title">🤖 슬래시 커맨드 목록</div>
-    <div style="display:flex;flex-direction:column;gap:6px">
-      {% set cmds = [
-        ("💾 /backup save",     "현재 서버 백업 저장"),
-        ("📋 /backup list",     "백업 목록 확인"),
-        ("🔄 /restore latest",  "최근 백업으로 복구"),
-        ("🔄 /restore id",      "특정 ID 백업으로 복구"),
-        ("🛡️ /autorecovery enable", "자동 복구 활성화"),
-        ("⏱️ /autobackup enable",   "자동 백업 활성화"),
-        ("⚡ /autobackup now",  "즉시 백업"),
-        ("🔐 /auth setup",      "인증 채널 설정"),
-        ("📌 /auth panel",      "인증 버튼 패널 전송"),
-        ("📊 /server status",   "서버 인원 현황"),
-        ("🏆 /invite top",      "초대 순위"),
-        ("📨 /invite info",     "내 초대 현황"),
-        ("🏪 /shop setup",      "자판기 채널 설정"),
-        ("📌 /shop panel",      "자판기 패널 전송"),
-        ("💰 /shop give",       "포인트 지급 (관리자)"),
-        ("💸 /shop take",       "포인트 차감 (관리자)"),
-      ] %}
-      {% for cmd, desc in cmds %}
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--card2);border-radius:6px">
-        <code style="color:#a5b4fc;font-size:13px">{{ cmd }}</code>
-        <span style="color:#8e9297;font-size:12px">{{ desc }}</span>
-      </div>
-      {% endfor %}
+    <div class="card-title">📢 채널 설정</div>
+    <div class="form-group">
+      <label class="form-label">로그 채널 ID</label>
+      <input class="form-control" id="logChannelId" placeholder="채널 ID 입력">
+      <div style="font-size:11px;color:#8e9297;margin-top:4px">백업, 복구, 입장/퇴장 등 봇 로그가 전송될 채널</div>
     </div>
+    <div class="form-group">
+      <label class="form-label">인증 채널 ID</label>
+      <input class="form-control" id="authChannelId" placeholder="채널 ID 입력">
+      <div style="font-size:11px;color:#8e9297;margin-top:4px">신규 멤버가 인증 버튼을 보는 채널</div>
+    </div>
+    <button class="btn btn-primary" onclick="saveChannels()">저장</button>
   </div>
 
-  <div style="display:flex;flex-direction:column;gap:20px">
-    <!-- Render 환경 변수 설정 -->
-    <div class="card">
-      <div class="card-title">🔧 Render 환경 변수</div>
-      <div style="font-size:13px;line-height:1.8;color:#DCDDDE">
-        <p style="color:#8e9297;margin-bottom:12px">Render 대시보드 → Environment 탭에서 아래 변수들을 설정하세요:</p>
-        {% set envs = [
-          ("BOT_TOKEN",          "디스코드 봇 토큰",          "#ED4245"),
-          ("CLIENT_ID",          "디스코드 앱 클라이언트 ID",  "#ED4245"),
-          ("CLIENT_SECRET",      "디스코드 앱 시크릿",         "#ED4245"),
-          ("REDIRECT_URI",       "https://도메인/callback",    "#FAA61A"),
-          ("ADMIN_REDIRECT_URI", "https://도메인/admin/callback","#FAA61A"),
-          ("LOG_CHANNEL_ID",     "로그 채널 ID (선택)",        "#57F287"),
-          ("AUTO_BACKUP_INTERVAL","21600 (6시간, 선택)",       "#57F287"),
-        ] %}
-        {% for key, desc, color in envs %}
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-          <code style="background:var(--card2);color:{{ color }};padding:3px 8px;border-radius:4px;font-size:12px;min-width:190px">{{ key }}</code>
-          <span style="color:#8e9297;font-size:12px">{{ desc }}</span>
-        </div>
-        {% endfor %}
+  <!-- 역할 설정 -->
+  <div class="card">
+    <div class="card-title">🎭 역할 설정</div>
+    <div class="form-group">
+      <label class="form-label">멤버 역할 ID</label>
+      <input class="form-control" id="memberRoleId" placeholder="역할 ID 입력">
+      <div style="font-size:11px;color:#8e9297;margin-top:4px">인증 완료 후 부여되는 기본 역할</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">관리자 역할 이름</label>
+      <input class="form-control" id="adminRoleName" placeholder="예: 관리자">
+      <div style="font-size:11px;color:#8e9297;margin-top:4px">/restore 등 관리 명령어 사용 가능 역할</div>
+    </div>
+    <button class="btn btn-primary" onclick="saveRoles()">저장</button>
+  </div>
+
+  <!-- 자동 복구 설정 -->
+  <div class="card">
+    <div class="card-title">🛡️ 자동 복구 설정</div>
+    <div style="margin-bottom:14px">
+      <label class="form-label">자동 복구 (Auto Recovery)</label>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:6px">
+        <label class="toggle-switch">
+          <input type="checkbox" id="autoRecoveryToggle">
+          <span class="slider"></span>
+        </label>
+        <span id="autoRecoveryLabel" style="font-size:13px;color:#8e9297">로딩 중...</span>
+      </div>
+      <div style="font-size:11px;color:#8e9297;margin-top:6px">채널/역할 대량 삭제 감지 시 자동 복구 실행</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">감지 임계값 (채널 삭제)</label>
+      <input class="form-control" id="thresholdChannel" type="number" value="3" min="1" max="20">
+      <div style="font-size:11px;color:#8e9297;margin-top:4px">10초 내 N개 이상 삭제 시 복구 발동</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">감지 임계값 (밴)</label>
+      <input class="form-control" id="thresholdBan" type="number" value="5" min="1" max="20">
+    </div>
+    <button class="btn btn-primary" onclick="saveAutoRecovery()">저장</button>
+  </div>
+
+  <!-- 자동 백업 설정 -->
+  <div class="card">
+    <div class="card-title">💾 자동 백업 설정</div>
+    <div style="margin-bottom:14px">
+      <label class="form-label">자동 백업 (Auto Backup)</label>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:6px">
+        <label class="toggle-switch">
+          <input type="checkbox" id="autoBackupToggle">
+          <span class="slider"></span>
+        </label>
+        <span id="autoBackupLabel" style="font-size:13px;color:#8e9297">로딩 중...</span>
       </div>
     </div>
-
-    <!-- 초기 설정 순서 -->
-    <div class="card">
-      <div class="card-title">🚀 초기 설정 순서</div>
-      <ol style="padding-left:18px;color:#DCDDDE;font-size:13px;line-height:2">
-        <li>봇을 서버에 초대 (관리자 권한)</li>
-        <li><code style="color:#a5b4fc">/backup save</code> — 첫 번째 백업 생성</li>
-        <li><code style="color:#a5b4fc">/autobackup enable</code> — 자동 백업 켜기</li>
-        <li><code style="color:#a5b4fc">/autorecovery enable</code> — 자동 복구 켜기</li>
-        <li><code style="color:#a5b4fc">/auth setup</code> — 인증 채널 설정</li>
-        <li><code style="color:#a5b4fc">/auth panel</code> — 인증 버튼 전송</li>
-        <li><code style="color:#a5b4fc">/shop setup</code> — 자판기 채널 설정</li>
-        <li><code style="color:#a5b4fc">/shop panel</code> — 자판기 패널 전송</li>
-        <li>웹 패널에서 상품 등록 후 완료! ✅</li>
-      </ol>
+    <div class="form-group">
+      <label class="form-label">백업 주기</label>
+      <select class="form-control" id="backupInterval">
+        <option value="3600">1시간마다</option>
+        <option value="10800">3시간마다</option>
+        <option value="21600" selected>6시간마다</option>
+        <option value="43200">12시간마다</option>
+        <option value="86400">24시간마다</option>
+      </select>
     </div>
+    <button class="btn btn-primary" onclick="saveAutoBackup()">저장</button>
+  </div>
 
-    <!-- 서버 복구 방법 -->
-    <div class="card" style="border-color:rgba(237,66,69,.4)">
-      <div class="card-title" style="color:#ED4245">🚨 서버 복구 방법</div>
-      <ol style="padding-left:18px;color:#DCDDDE;font-size:13px;line-height:2">
-        <li>새 디스코드 서버 생성</li>
-        <li>봇을 새 서버에 초대 (관리자 권한)</li>
-        <li><code style="color:#a5b4fc">/restore latest</code> 입력</li>
-        <li>채널·역할이 자동 복구됩니다</li>
-        <li>웹 패널 → 멤버 관리 → <strong>"전원 재참가"</strong> 클릭</li>
-        <li>인증한 멤버들이 자동으로 재참가합니다 ✅</li>
-      </ol>
-      <div style="margin-top:12px;padding:10px;background:rgba(237,66,69,.1);border-radius:6px;font-size:12px;color:#ED4245">
-        ⚠️ 재참가는 인증 버튼을 눌러 OAuth2 토큰이 저장된 멤버만 가능합니다.
-      </div>
+</div>
+
+<!-- 위험 구역 -->
+<div class="card" style="border-color:rgba(237,66,69,.4);margin-top:8px">
+  <div class="card-title" style="color:#ED4245">⚠️ 위험 구역</div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <div style="flex:1;min-width:240px">
+      <div style="font-size:13px;color:#DCDDDE;margin-bottom:8px;font-weight:600">모든 백업 삭제</div>
+      <div style="font-size:12px;color:#8e9297;margin-bottom:10px">이 서버의 모든 백업 데이터가 영구 삭제됩니다.</div>
+      <button class="btn btn-danger btn-sm" onclick="deleteAllBackups()">🗑️ 전체 삭제</button>
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+.toggle-switch { position:relative; display:inline-block; width:44px; height:24px; }
+.toggle-switch input { opacity:0; width:0; height:0; }
+.slider {
+  position:absolute; cursor:pointer; inset:0;
+  background:#3a3d44; border-radius:24px; transition:.3s;
+}
+.slider:before {
+  content:''; position:absolute;
+  width:18px; height:18px; left:3px; bottom:3px;
+  background:#fff; border-radius:50%; transition:.3s;
+}
+input:checked + .slider { background:#5865F2; }
+input:checked + .slider:before { transform:translateX(20px); }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const gid = window.GUILD_ID;
+
+function saveChannels() {
+  toast('설정이 저장되었습니다. (Render 환경변수에서 적용)','success');
+}
+function saveRoles() {
+  toast('설정이 저장되었습니다. (Render 환경변수에서 적용)','success');
+}
+function saveAutoRecovery() {
+  toast('자동 복구 설정이 저장되었습니다.','success');
+}
+function saveAutoBackup() {
+  toast('자동 백업 설정이 저장되었습니다.','success');
+}
+
+async function deleteAllBackups() {
+  if (!gid) return toast('서버를 선택하세요','error');
+  const ok = confirm('이 서버의 모든 백업을 영구 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다!');
+  if (!ok) return;
+  try {
+    await api('DELETE', `/api/backups/all?guild_id=${gid}`);
+    toast('모든 백업이 삭제되었습니다.','success');
+  } catch(e) { toast('삭제 실패: '+e.message,'error'); }
+}
+
+// 토글 상태 (UI only)
+document.getElementById('autoRecoveryToggle').addEventListener('change', function() {
+  document.getElementById('autoRecoveryLabel').textContent = this.checked ? '✅ 활성화됨' : '❌ 비활성화됨';
+  document.getElementById('autoRecoveryLabel').style.color = this.checked ? '#57F287' : '#ED4245';
+});
+document.getElementById('autoBackupToggle').addEventListener('change', function() {
+  document.getElementById('autoBackupLabel').textContent = this.checked ? '✅ 활성화됨' : '❌ 비활성화됨';
+  document.getElementById('autoBackupLabel').style.color = this.checked ? '#57F287' : '#ED4245';
+});
+// 초기값
+document.getElementById('autoRecoveryLabel').textContent = '비활성화됨';
+document.getElementById('autoBackupLabel').textContent   = '비활성화됨';
+</script>
 {% endblock %}

@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+data/backup.db
+logs/
+.env
+*.zip

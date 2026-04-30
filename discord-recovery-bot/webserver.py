@@ -1,377 +1,377 @@
 """
 webserver.py ─ FastAPI 웹서버
-  - OAuth2 콜백 (인증 버튼)
-  - 디스코드 관리자 로그인
-  - 웹 관리 패널 API
+  - OAuth2 콜백 (인증 버튼 → 토큰 저장 → 역할 부여)
+  - 관리 패널 (로그인, 대시보드, 백업, 자판기, 멤버, 초대, 설정)
+  - REST API (봇·패널 공통 사용)
 """
 
 import asyncio
 import logging
+import httpx
+import json
 import os
 import secrets
-from datetime import datetime
-from functools import wraps
 
-import httpx
+from datetime import datetime
 from fastapi import FastAPI, Request, HTTPException, Depends
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 
 import database as db
-from config import CLIENT_ID, CLIENT_SECRET, REDIRECT_URI, BOT_TOKEN
+from config import (
+    CLIENT_ID, CLIENT_SECRET, REDIRECT_URI, BOT_TOKEN
+)
 
 log = logging.getLogger(__name__)
 
-app = FastAPI(title="RecoveryBot 관리 패널")
+# ── FastAPI 앱 ────────────────────────────────────
+app = FastAPI(title="RecoveryBot Panel")
 
-# 정적 파일 & 템플릿
-BASE_DIR = os.path.dirname(__file__)
+# 템플릿 / 정적 파일
+BASE_DIR  = os.path.dirname(__file__)
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
-app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
-# 세션 저장소 (메모리)
-sessions: dict[str, dict] = {}   # session_id → { user_id, username, guilds, ... }
+static_dir = os.path.join(BASE_DIR, "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-DISCORD_API = "https://discord.com/api/v10"
-# 관리 패널 전용 OAuth2 리다이렉트
-ADMIN_REDIRECT = os.getenv("ADMIN_REDIRECT_URI", REDIRECT_URI.replace("/callback", "/admin/callback"))
+# ── 세션 (간이 메모리 세션) ────────────────────────
+sessions: dict[str, dict] = {}   # token → {user_id, username, guilds, ...}
 
+ADMIN_OAUTH_REDIRECT = REDIRECT_URI.replace("/callback", "/admin/callback")
 
 # ══════════════════════════════════════════════════
-#  유틸
+#  헬퍼
 # ══════════════════════════════════════════════════
 
 def get_session(request: Request) -> dict | None:
-    sid = request.cookies.get("session_id")
-    return sessions.get(sid) if sid else None
+    token = request.cookies.get("session")
+    return sessions.get(token)
 
 
-def require_login(request: Request) -> dict:
+def require_session(request: Request) -> dict:
     s = get_session(request)
     if not s:
         raise HTTPException(status_code=302, headers={"Location": "/admin/login"})
     return s
 
 
+def _html(name: str, request: Request, ctx: dict = None):
+    ctx = ctx or {}
+    s   = get_session(request)
+    ctx.update({"request": request, "user": s or {}, "client_id": CLIENT_ID,
+                "redirect_uri": ADMIN_OAUTH_REDIRECT})
+    return templates.TemplateResponse(name, ctx)
+
+
 # ══════════════════════════════════════════════════
-#  루트
+#  공개 라우트
 # ══════════════════════════════════════════════════
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def root():
     return HTMLResponse(
-        "<h2 style='font-family:sans-serif;text-align:center;margin-top:20%'>"
-        "RecoveryBot 서버 정상 작동 중 ✅<br>"
-        "<a href='/admin' style='font-size:16px;color:#7289DA'>관리 패널 →</a></h2>"
+        "<html><body style='background:#1a1c1f;color:#fff;"
+        "font-family:sans-serif;display:flex;justify-content:center;"
+        "align-items:center;height:100vh;margin:0'>"
+        "<div style='text-align:center'>"
+        "<div style='font-size:64px;margin-bottom:16px'>🛡️</div>"
+        "<h2 style='font-size:24px'>RecoveryBot 서버 정상 작동 중</h2>"
+        "<p style='color:#8e9297;margin-top:8px'>웹서버가 실행 중입니다.</p>"
+        "<a href='/admin' style='display:inline-block;margin-top:24px;"
+        "background:#5865F2;color:#fff;padding:12px 28px;border-radius:8px;"
+        "text-decoration:none;font-weight:700'>📊 관리 패널 열기</a>"
+        "</div></body></html>"
     )
 
 
-# ══════════════════════════════════════════════════
-#  인증 버튼 OAuth2 콜백 (/callback)
-# ══════════════════════════════════════════════════
-
-def _html(title: str, icon: str, msg: str, sub: str = "", badge: str = "", badge_color: str = "#43B581") -> str:
-    return f"""<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{title}</title>
-<style>
-*{{margin:0;padding:0;box-sizing:border-box}}
-body{{background:#23272A;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:'Segoe UI',sans-serif}}
-.card{{background:#2C2F33;border-radius:16px;padding:48px 40px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.4);max-width:420px;width:90%}}
-.icon{{font-size:64px;margin-bottom:16px}}
-h1{{color:#fff;font-size:24px;margin-bottom:10px}}
-p{{color:#B9BBBE;font-size:15px;line-height:1.6}}
-.badge{{display:inline-block;background:{badge_color};color:#fff;padding:6px 18px;border-radius:20px;font-size:13px;margin-top:20px}}
-.close{{color:#72767D;font-size:13px;margin-top:16px}}
-</style>
-</head>
-<body>
-<div class="card">
-  <div class="icon">{icon}</div>
-  <h1>{title}</h1>
-  <p>{msg}</p>
-  {"<p>" + sub + "</p>" if sub else ""}
-  {"<div class='badge'>" + badge + "</div>" if badge else ""}
-  <p class="close">이 창을 닫고 디스코드로 돌아가세요</p>
-</div>
-</body>
-</html>"""
-
+# ── 인증 콜백 (디스코드 봇 인증 버튼용) ─────────────
 
 @app.get("/callback")
 async def oauth_callback(request: Request):
+    """신규 멤버 인증 버튼 → access_token 저장 → 역할 부여"""
     code     = request.query_params.get("code")
     guild_id = request.query_params.get("state")
 
     if not code:
-        return HTMLResponse(_html("인증 실패", "❌", "인증 코드가 없습니다.", badge_color="#F04747"), status_code=400)
+        return HTMLResponse(_error_page("인증 코드가 없습니다."), status_code=400)
 
     async with httpx.AsyncClient() as client:
-        # 1. code → access_token
-        token_res = await client.post(
-            f"{DISCORD_API}/oauth2/token",
+        # 1. code → token
+        tr = await client.post(
+            "https://discord.com/api/oauth2/token",
             data={
-                "client_id": CLIENT_ID, "client_secret": CLIENT_SECRET,
-                "grant_type": "authorization_code",
-                "code": code, "redirect_uri": REDIRECT_URI,
+                "client_id":     CLIENT_ID,
+                "client_secret": CLIENT_SECRET,
+                "grant_type":    "authorization_code",
+                "code":          code,
+                "redirect_uri":  REDIRECT_URI,
             },
-            headers={"Content-Type": "application/x-www-form-urlencoded"}
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
-        if token_res.status_code != 200:
-            log.error("토큰 교환 실패: %s", token_res.text)
-            return HTMLResponse(_html("인증 실패", "❌", "토큰 교환 실패", badge_color="#F04747"), status_code=400)
+        if tr.status_code != 200:
+            log.error("토큰 교환 실패: %s", tr.text)
+            return HTMLResponse(_error_page("토큰 교환 실패"), status_code=400)
 
-        token_data    = token_res.json()
-        access_token  = token_data.get("access_token", "")
-        refresh_token = token_data.get("refresh_token", "")
-        expires_in    = token_data.get("expires_in", 604800)
+        td            = tr.json()
+        access_token  = td.get("access_token")
+        refresh_token = td.get("refresh_token", "")
+        expires_in    = td.get("expires_in", 604800)
 
         # 2. 유저 정보
-        user_res = await client.get(
-            f"{DISCORD_API}/users/@me",
-            headers={"Authorization": f"Bearer {access_token}"}
+        ur = await client.get(
+            "https://discord.com/api/users/@me",
+            headers={"Authorization": f"Bearer {access_token}"},
         )
-        if user_res.status_code != 200:
-            return HTMLResponse(_html("인증 실패", "❌", "유저 정보 조회 실패", badge_color="#F04747"), status_code=400)
+        if ur.status_code != 200:
+            return HTMLResponse(_error_page("유저 정보 조회 실패"), status_code=400)
 
-        user_data = user_res.json()
-        user_id   = user_data["id"]
-        username  = user_data["username"]
+        ud       = ur.json()
+        user_id  = ud["id"]
+        username = ud["username"]
 
         # 3. DB 저장
         db.save_token(user_id, username, access_token, refresh_token, expires_in, guild_id or "")
-        log.info("OAuth 토큰 저장: %s (%s)", username, user_id)
 
-        # 4. 서버에 멤버 추가
-        if guild_id:
-            join_res = await client.put(
-                f"{DISCORD_API}/guilds/{guild_id}/members/{user_id}",
+        # 4. 서버 참가
+        if guild_id and BOT_TOKEN:
+            jr = await client.put(
+                f"https://discord.com/api/guilds/{guild_id}/members/{user_id}",
                 headers={"Authorization": f"Bot {BOT_TOKEN}"},
-                json={"access_token": access_token}
+                json={"access_token": access_token},
             )
-            log.info("서버 참가 결과: %s (user=%s guild=%s)", join_res.status_code, username, guild_id)
+            log.info("서버 참가: status=%s user=%s", jr.status_code, username)
 
-    return HTMLResponse(_html(
-        "인증 완료!", "✅",
-        f"<span style='color:#7289DA;font-weight:bold'>{username}</span> 님,<br>서버 인증이 완료되었습니다!",
-        badge="✓ 멤버 역할 부여됨"
-    ))
+    return HTMLResponse(_success_page(username))
 
 
 # ══════════════════════════════════════════════════
-#  관리 패널 로그인
+#  관리 패널 라우트
 # ══════════════════════════════════════════════════
 
-@app.get("/admin/login")
+@app.get("/admin/login", response_class=HTMLResponse)
 async def admin_login(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "client_id": CLIENT_ID,
-                                                      "redirect_uri": ADMIN_REDIRECT})
+    if get_session(request):
+        return RedirectResponse("/admin")
+    return _html("login.html", request)
 
 
 @app.get("/admin/callback")
 async def admin_callback(request: Request):
-    code = request.query_params.get("code")
-    if not code:
-        return RedirectResponse("/admin/login")
+    """관리자 OAuth2 콜백"""
+    code  = request.query_params.get("code")
+    error = request.query_params.get("error")
+
+    if error or not code:
+        return RedirectResponse("/admin/login?error=1")
 
     async with httpx.AsyncClient() as client:
-        token_res = await client.post(
-            f"{DISCORD_API}/oauth2/token",
+        # code → token
+        tr = await client.post(
+            "https://discord.com/api/oauth2/token",
             data={
-                "client_id": CLIENT_ID, "client_secret": CLIENT_SECRET,
-                "grant_type": "authorization_code",
-                "code": code, "redirect_uri": ADMIN_REDIRECT,
+                "client_id":     CLIENT_ID,
+                "client_secret": CLIENT_SECRET,
+                "grant_type":    "authorization_code",
+                "code":          code,
+                "redirect_uri":  ADMIN_OAUTH_REDIRECT,
             },
-            headers={"Content-Type": "application/x-www-form-urlencoded"}
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
-        if token_res.status_code != 200:
+        if tr.status_code != 200:
             return RedirectResponse("/admin/login?error=1")
 
-        token_data   = token_res.json()
-        access_token = token_data.get("access_token", "")
+        td           = tr.json()
+        access_token = td.get("access_token")
 
-        user_res = await client.get(f"{DISCORD_API}/users/@me",
-                                    headers={"Authorization": f"Bearer {access_token}"})
-        if user_res.status_code != 200:
+        # 유저 정보
+        ur = await client.get(
+            "https://discord.com/api/users/@me",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        if ur.status_code != 200:
             return RedirectResponse("/admin/login?error=1")
+        ud       = ur.json()
+        user_id  = ud["id"]
+        username = ud["username"]
 
-        user_data = user_res.json()
+        # 서버 목록 (관리자 권한 있는 서버만)
+        gr = await client.get(
+            "https://discord.com/api/users/@me/guilds",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        guilds = []
+        if gr.status_code == 200:
+            all_guilds = gr.json()
+            for g in all_guilds:
+                perms = int(g.get("permissions", 0))
+                if perms & 0x8:   # ADMINISTRATOR flag
+                    guilds.append({"id": g["id"], "name": g["name"]})
 
-        # 관리 서버에서 봇이 있는 길드 가져오기
-        guilds_res = await client.get(f"{DISCORD_API}/users/@me/guilds",
-                                      headers={"Authorization": f"Bearer {access_token}"})
-        guilds = guilds_res.json() if guilds_res.status_code == 200 else []
-
-        # 관리자 권한 있는 길드만 필터
-        admin_guilds = [g for g in guilds if (int(g.get("permissions", 0)) & 0x8) == 0x8]
-
-    sid = secrets.token_hex(32)
-    sessions[sid] = {
-        "user_id":  user_data["id"],
-        "username": user_data["username"],
-        "avatar":   user_data.get("avatar"),
-        "guilds":   admin_guilds,
-        "token":    access_token,
+    # 세션 저장
+    token = secrets.token_urlsafe(32)
+    sessions[token] = {
+        "user_id":  user_id,
+        "username": username,
+        "guilds":   guilds,
     }
 
     resp = RedirectResponse("/admin", status_code=302)
-    resp.set_cookie("session_id", sid, httponly=True, max_age=86400 * 7)
+    resp.set_cookie("session", token, max_age=86400, httponly=True)
     return resp
 
 
 @app.get("/admin/logout")
 async def admin_logout(request: Request):
-    sid = request.cookies.get("session_id")
-    if sid:
-        sessions.pop(sid, None)
-    resp = RedirectResponse("/admin/login")
-    resp.delete_cookie("session_id")
+    token = request.cookies.get("session")
+    if token:
+        sessions.pop(token, None)
+    resp = RedirectResponse("/admin/login", status_code=302)
+    resp.delete_cookie("session")
     return resp
 
 
-# ══════════════════════════════════════════════════
-#  관리 패널 메인 페이지들
-# ══════════════════════════════════════════════════
-
-@app.get("/admin")
-async def admin_index(request: Request):
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_dashboard(request: Request):
     s = get_session(request)
     if not s:
         return RedirectResponse("/admin/login")
-    return templates.TemplateResponse("dashboard.html", {"request": request, "user": s})
+    return _html("dashboard.html", request)
 
 
-@app.get("/admin/backup")
+@app.get("/admin/backup", response_class=HTMLResponse)
 async def admin_backup(request: Request):
     s = get_session(request)
     if not s:
         return RedirectResponse("/admin/login")
-    return templates.TemplateResponse("backup.html", {"request": request, "user": s})
+    return _html("backup.html", request)
 
 
-@app.get("/admin/members")
+@app.get("/admin/members", response_class=HTMLResponse)
 async def admin_members(request: Request):
     s = get_session(request)
     if not s:
         return RedirectResponse("/admin/login")
-    return templates.TemplateResponse("members.html", {"request": request, "user": s})
+    return _html("members.html", request)
 
 
-@app.get("/admin/shop")
+@app.get("/admin/shop", response_class=HTMLResponse)
 async def admin_shop(request: Request):
     s = get_session(request)
     if not s:
         return RedirectResponse("/admin/login")
-    return templates.TemplateResponse("shop.html", {"request": request, "user": s})
+    return _html("shop.html", request)
 
 
-@app.get("/admin/invite")
+@app.get("/admin/invite", response_class=HTMLResponse)
 async def admin_invite(request: Request):
     s = get_session(request)
     if not s:
         return RedirectResponse("/admin/login")
-    return templates.TemplateResponse("invite.html", {"request": request, "user": s})
+    return _html("invite.html", request)
 
 
-@app.get("/admin/settings")
+@app.get("/admin/settings", response_class=HTMLResponse)
 async def admin_settings(request: Request):
     s = get_session(request)
     if not s:
         return RedirectResponse("/admin/login")
-    return templates.TemplateResponse("settings.html", {"request": request, "user": s})
+    return _html("settings.html", request)
 
 
 # ══════════════════════════════════════════════════
-#  REST API (JSON)
+#  REST API
 # ══════════════════════════════════════════════════
 
-def _check(request: Request) -> dict:
-    s = get_session(request)
-    if not s:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    return s
-
-
-# ─── 대시보드 API ────────────────────────────────
+# ── 대시보드 ──────────────────────────────────────
 
 @app.get("/api/dashboard")
-async def api_dashboard(request: Request, guild_id: str = ""):
-    _check(request)
-    backups  = db.list_backups(guild_id) if guild_id else []
-    tokens   = db.get_token_count(guild_id) if guild_id else 0
-    revenue  = db.get_total_revenue(guild_id) if guild_id else 0
-    products = db.get_products(guild_id) if guild_id else []
+async def api_dashboard(guild_id: str, request: Request):
+    if not get_session(request):
+        raise HTTPException(401)
+    backups  = db.list_backups(guild_id)
+    products = db.get_products(guild_id)
+    tokens   = db.get_token_count(guild_id)
+    revenue  = db.get_total_revenue(guild_id)
+    latest   = backups[0] if backups else None
     return {
-        "backup_count":   len(backups),
-        "latest_backup":  backups[0] if backups else None,
-        "token_count":    tokens,
-        "revenue":        revenue,
-        "product_count":  len(products),
+        "backup_count":  len(backups),
+        "product_count": len(products),
+        "token_count":   tokens,
+        "revenue":       revenue,
+        "latest_backup": latest,
     }
 
 
-# ─── 백업 API ────────────────────────────────────
+# ── 백업 ──────────────────────────────────────────
 
 @app.get("/api/backups")
-async def api_backups(request: Request, guild_id: str):
-    _check(request)
+async def api_list_backups(guild_id: str, request: Request):
+    if not get_session(request):
+        raise HTTPException(401)
     return db.list_backups(guild_id)
 
 
 @app.delete("/api/backups/{backup_id}")
 async def api_delete_backup(backup_id: int, request: Request):
-    _check(request)
-    try:
-        db.delete_backup(backup_id)
-        return {"ok": True}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    if not get_session(request):
+        raise HTTPException(401)
+    db.delete_backup(backup_id)
+    return {"ok": True}
 
 
-# ─── 상품 API ────────────────────────────────────
+@app.delete("/api/backups/all")
+async def api_delete_all_backups(guild_id: str, request: Request):
+    if not get_session(request):
+        raise HTTPException(401)
+    backups = db.list_backups(guild_id)
+    for b in backups:
+        db.delete_backup(b["id"])
+    return {"deleted": len(backups)}
+
+
+# ── 상품 ──────────────────────────────────────────
 
 @app.get("/api/products")
-async def api_products(request: Request, guild_id: str):
-    _check(request)
+async def api_get_products(guild_id: str, request: Request):
+    if not get_session(request):
+        raise HTTPException(401)
     return db.get_products(guild_id)
 
 
 @app.post("/api/products")
 async def api_add_product(request: Request):
-    _check(request)
+    if not get_session(request):
+        raise HTTPException(401)
     body = await request.json()
-    pid = db.add_product(
-        guild_id = body["guild_id"],
-        name     = body["name"],
-        price    = int(body["price"]),
-        role_id  = str(body["role_id"])
-    )
-    return {"ok": True, "id": pid}
+    pid  = db.add_product(body["guild_id"], body["name"], int(body["price"]), body["role_id"])
+    return {"id": pid}
 
 
 @app.put("/api/products/{product_id}")
 async def api_update_product(product_id: int, request: Request):
-    _check(request)
+    if not get_session(request):
+        raise HTTPException(401)
     body = await request.json()
-    db.update_product(product_id, body["name"], int(body["price"]), str(body["role_id"]))
+    db.update_product(product_id, body["name"], int(body["price"]), body["role_id"])
     return {"ok": True}
 
 
 @app.delete("/api/products/{product_id}")
 async def api_delete_product(product_id: int, request: Request):
-    _check(request)
+    if not get_session(request):
+        raise HTTPException(401)
     db.delete_product(product_id)
     return {"ok": True}
 
 
-# ─── 충전 신청 API ───────────────────────────────
+# ── 충전 신청 ──────────────────────────────────────
 
 @app.get("/api/charges")
-async def api_charges(request: Request, guild_id: str, status: str = "pending"):
-    _check(request)
+async def api_get_charges(guild_id: str, request: Request, status: str = "pending"):
+    if not get_session(request):
+        raise HTTPException(401)
     if status == "all":
         return db.get_all_charge_requests(guild_id)
     return db.get_charge_requests(guild_id, status)
@@ -379,90 +379,149 @@ async def api_charges(request: Request, guild_id: str, status: str = "pending"):
 
 @app.post("/api/charges/{charge_id}/approve")
 async def api_approve_charge(charge_id: int, request: Request):
-    _check(request)
+    if not get_session(request):
+        raise HTTPException(401)
     body   = await request.json()
     amount = int(body.get("amount", 0))
     if amount <= 0:
-        raise HTTPException(status_code=400, detail="금액을 입력하세요")
+        raise HTTPException(400, detail="금액을 입력하세요")
     result = db.approve_charge(charge_id, amount)
     if not result:
-        raise HTTPException(status_code=404, detail="충전 신청을 찾을 수 없습니다")
+        raise HTTPException(404, detail="충전 신청을 찾을 수 없습니다")
     return {"ok": True, "user_id": result["user_id"], "amount": amount}
 
 
 @app.post("/api/charges/{charge_id}/reject")
 async def api_reject_charge(charge_id: int, request: Request):
-    _check(request)
+    if not get_session(request):
+        raise HTTPException(401)
     db.reject_charge(charge_id)
     return {"ok": True}
 
 
-# ─── 구매 내역 API ───────────────────────────────
+# ── 구매 내역 ──────────────────────────────────────
 
 @app.get("/api/purchases")
-async def api_purchases(request: Request, guild_id: str):
-    _check(request)
+async def api_get_purchases(guild_id: str, request: Request):
+    if not get_session(request):
+        raise HTTPException(401)
     return db.get_purchases(guild_id)
 
 
-# ─── 잔액 API ────────────────────────────────────
+# ── 잔액 ──────────────────────────────────────────
 
 @app.get("/api/balances")
-async def api_balances(request: Request, guild_id: str):
-    _check(request)
+async def api_get_balances(guild_id: str, request: Request):
+    if not get_session(request):
+        raise HTTPException(401)
     return db.get_all_balances(guild_id)
 
 
 @app.post("/api/balances/give")
 async def api_give_balance(request: Request):
-    _check(request)
+    if not get_session(request):
+        raise HTTPException(401)
     body = await request.json()
-    db.update_balance(str(body["user_id"]), body["guild_id"], int(body["amount"]))
-    return {"ok": True}
+    db.update_balance(body["user_id"], body["guild_id"], int(body["amount"]))
+    new_bal = db.get_balance(body["user_id"], body["guild_id"])
+    return {"ok": True, "balance": new_bal}
 
 
-# ─── 초대 로그 API ───────────────────────────────
-
-@app.get("/api/invites")
-async def api_invites(request: Request, guild_id: str):
-    _check(request)
-    return {
-        "top":  db.get_invite_top(guild_id, limit=20),
-        "logs": db.get_invite_logs(guild_id),
-    }
-
-
-# ─── OAuth 토큰 API ──────────────────────────────
+# ── 멤버 토큰 ──────────────────────────────────────
 
 @app.get("/api/tokens")
-async def api_tokens(request: Request, guild_id: str):
-    _check(request)
-    tokens = db.get_all_tokens(guild_id)
-    # access_token 은 숨기고 기본 정보만 반환
-    return [{"user_id": t["user_id"], "username": t["username"],
-             "saved_at": t["saved_at"]} for t in tokens]
+async def api_get_tokens(guild_id: str, request: Request):
+    if not get_session(request):
+        raise HTTPException(401)
+    return db.get_all_tokens(guild_id)
 
 
-# ─── 멤버 강제 재참가 API ────────────────────────
+# ── 멤버 재참가 ────────────────────────────────────
 
 @app.post("/api/rejoin")
 async def api_rejoin(request: Request):
-    _check(request)
+    if not get_session(request):
+        raise HTTPException(401)
     body     = await request.json()
-    guild_id = body["guild_id"]
+    guild_id = body.get("guild_id")
     tokens   = db.get_all_tokens(guild_id)
 
-    success, fail = 0, 0
+    success = 0
+    fail    = 0
+
     async with httpx.AsyncClient() as client:
         for t in tokens:
-            res = await client.put(
-                f"{DISCORD_API}/guilds/{guild_id}/members/{t['user_id']}",
-                headers={"Authorization": f"Bot {BOT_TOKEN}"},
-                json={"access_token": t["access_token"]}
-            )
-            if res.status_code in (200, 201, 204):
-                success += 1
-            else:
+            try:
+                r = await client.put(
+                    f"https://discord.com/api/guilds/{guild_id}/members/{t['user_id']}",
+                    headers={"Authorization": f"Bot {BOT_TOKEN}"},
+                    json={"access_token": t["access_token"]},
+                )
+                if r.status_code in (200, 201, 204):
+                    success += 1
+                else:
+                    fail += 1
+                    log.warning("재참가 실패: user=%s status=%s", t["user_id"], r.status_code)
+            except Exception as e:
                 fail += 1
+                log.error("재참가 오류: %s", e)
 
-    return {"ok": True, "success": success, "fail": fail}
+    return {"success": success, "fail": fail, "total": len(tokens)}
+
+
+# ── 초대 로그 ──────────────────────────────────────
+
+@app.get("/api/invites")
+async def api_get_invites(guild_id: str, request: Request):
+    if not get_session(request):
+        raise HTTPException(401)
+    top  = db.get_invite_top(guild_id, limit=20)
+    logs = db.get_invite_logs(guild_id)
+    return {"top": top, "logs": logs}
+
+
+# ══════════════════════════════════════════════════
+#  HTML 페이지 (인증 성공/실패)
+# ══════════════════════════════════════════════════
+
+def _success_page(username: str) -> str:
+    return f"""<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"><title>인증 완료</title>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{background:#23272A;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:'Segoe UI',sans-serif}}
+.card{{background:#2C2F33;border-radius:16px;padding:48px 40px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.4);max-width:400px;width:90%}}
+.icon{{font-size:64px;margin-bottom:16px}}
+h1{{color:#fff;font-size:24px;margin-bottom:8px}}
+p{{color:#B9BBBE;font-size:15px;line-height:1.6}}
+.name{{color:#7289DA;font-weight:bold}}
+.badge{{display:inline-block;background:#43B581;color:#fff;padding:6px 16px;border-radius:20px;font-size:13px;margin-top:20px}}
+.close{{color:#72767D;font-size:13px;margin-top:16px}}
+</style></head>
+<body><div class="card">
+<div class="icon">✅</div>
+<h1>인증 완료!</h1>
+<p><span class="name">{username}</span> 님,<br>서버 인증이 완료되었습니다!</p>
+<div class="badge">✓ 멤버 역할 부여됨</div>
+<p class="close">이 창을 닫고 디스코드로 돌아가세요</p>
+</div></body></html>"""
+
+
+def _error_page(msg: str) -> str:
+    return f"""<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"><title>인증 오류</title>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{background:#23272A;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:'Segoe UI',sans-serif}}
+.card{{background:#2C2F33;border-radius:16px;padding:48px 40px;text-align:center;max-width:400px;width:90%}}
+.icon{{font-size:64px;margin-bottom:16px}}
+h1{{color:#fff;font-size:24px;margin-bottom:8px}}
+p{{color:#B9BBBE;font-size:15px}}
+.err{{color:#F04747;font-size:13px;margin-top:12px}}
+</style></head>
+<body><div class="card">
+<div class="icon">❌</div>
+<h1>인증 실패</h1>
+<p>인증 중 오류가 발생했습니다.<br>디스코드로 돌아가서 다시 시도해주세요.</p>
+<p class="err">{msg}</p>
+</div></body></html>"""
