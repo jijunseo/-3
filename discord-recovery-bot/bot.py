@@ -1,12 +1,14 @@
 """
 bot.py ─ RecoveryBot 메인 진입점
-봇 + 웹서버를 asyncio 단일 루프에서 동시 실행
+웹서버를 먼저 바인딩한 후 봇을 실행 (Render 호환)
 """
 
 import asyncio
 import logging
 import os
 import sys
+import threading
+
 import discord
 from discord.ext import commands
 import uvicorn
@@ -26,10 +28,6 @@ log = logging.getLogger("RecoveryBot")
 # ── config & DB ────────────────────────────────────
 from config import BOT_TOKEN, PREFIX
 import database as db
-import os
-
-# Render가 동적으로 PORT를 지정하므로 런타임에 읽음
-WEB_PORT = int(os.environ.get("PORT", 8000))
 
 # ── Cogs 목록 ──────────────────────────────────────
 COGS = [
@@ -101,37 +99,60 @@ class RecoveryBot(commands.Bot):
 
 
 # ══════════════════════════════════════════════════
-#  메인 — 봇 + 웹서버 동시 실행 (단일 asyncio 루프)
+#  웹서버 — 별도 스레드에서 즉시 실행
 # ══════════════════════════════════════════════════
 
-async def main():
-    if not BOT_TOKEN or BOT_TOKEN == "여기에_봇_토큰_입력":
-        log.critical("❌ BOT_TOKEN 이 설정되지 않았습니다!")
-        sys.exit(1)
-
-    # Render PORT 런타임 확인
-    port = int(os.environ.get("PORT", 8000))
-    log.info("🌐 웹서버 시작 (포트: %d)", port)
-
-    # 웹서버 설정
+def run_webserver(port: int):
+    """별도 스레드에서 uvicorn 웹서버 실행 (블로킹)"""
     from webserver import app as web_app
-    web_config = uvicorn.Config(
+
+    # 새 이벤트 루프 생성 (스레드용)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    config = uvicorn.Config(
         app=web_app,
         host="0.0.0.0",
         port=port,
         log_level="info",
         loop="asyncio",
+        access_log=True,
     )
-    web_server = uvicorn.Server(web_config)
+    server = uvicorn.Server(config)
+    loop.run_until_complete(server.serve())
 
+
+# ══════════════════════════════════════════════════
+#  메인
+# ══════════════════════════════════════════════════
+
+def main():
+    if not BOT_TOKEN or BOT_TOKEN == "여기에_봇_토큰_입력":
+        log.critical("❌ BOT_TOKEN 이 설정되지 않았습니다!")
+        sys.exit(1)
+
+    # Render가 동적으로 PORT 환경변수를 주입함
+    port = int(os.environ.get("PORT", 8000))
+    log.info("🌐 웹서버 시작 (포트: %d)", port)
+
+    # ① 웹서버를 데몬 스레드로 먼저 시작 (Render 포트 바인딩)
+    web_thread = threading.Thread(
+        target=run_webserver,
+        args=(port,),
+        daemon=True,
+        name="WebServer",
+    )
+    web_thread.start()
+
+    # ② 웹서버가 바인딩될 때까지 잠깐 대기
+    import time
+    time.sleep(1)
+    log.info("✅ 웹서버 스레드 시작됨")
+
+    # ③ 봇을 메인 스레드 이벤트 루프에서 실행
     bot = RecoveryBot()
-
-    # 봇과 웹서버를 asyncio.gather 로 동시 실행
-    await asyncio.gather(
-        web_server.serve(),
-        bot.start(BOT_TOKEN),
-    )
+    asyncio.run(bot.start(BOT_TOKEN))
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
