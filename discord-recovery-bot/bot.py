@@ -24,8 +24,12 @@ logging.basicConfig(
 log = logging.getLogger("RecoveryBot")
 
 # ── config & DB ────────────────────────────────────
-from config import BOT_TOKEN, PREFIX, WEB_PORT
+from config import BOT_TOKEN, PREFIX
 import database as db
+import os
+
+# Render가 동적으로 PORT를 지정하므로 런타임에 읽음
+WEB_PORT = int(os.environ.get("PORT", 8000))
 
 # ── Cogs 목록 ──────────────────────────────────────
 COGS = [
@@ -105,20 +109,22 @@ async def main():
         log.critical("❌ BOT_TOKEN 이 설정되지 않았습니다!")
         sys.exit(1)
 
+    # Render PORT 런타임 확인
+    port = int(os.environ.get("PORT", 8000))
+    log.info("🌐 웹서버 시작 (포트: %d)", port)
+
     # 웹서버 설정
     from webserver import app as web_app
     web_config = uvicorn.Config(
         app=web_app,
         host="0.0.0.0",
-        port=WEB_PORT,
+        port=port,
         log_level="info",
-        loop="asyncio",          # 현재 루프 재사용
+        loop="asyncio",
     )
     web_server = uvicorn.Server(web_config)
 
     bot = RecoveryBot()
-
-    log.info("🌐 웹서버 시작 (포트: %d)", WEB_PORT)
 
     # 봇과 웹서버를 asyncio.gather 로 동시 실행
     await asyncio.gather(
