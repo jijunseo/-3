@@ -309,35 +309,35 @@ tbody tr:last-child { border-bottom: none; }
     <select id="guildSelect" onchange="setGuild(this.value)">
       <option value="">서버를 선택하세요</option>
       {% for g in user.guilds %}
-      <option value="{{ g.id }}" {% if g.id == request.cookies.get('guild_id') %}selected{% endif %}>{{ g.name }}</option>
+      <option value="{{ g.id }}" {% if g.id == current_guild_id %}selected{% endif %}>{{ g.name }}</option>
       {% endfor %}
     </select>
   </div>
 
   <nav class="sidebar-nav">
     <div class="nav-section">메인</div>
-    <a href="/admin" class="nav-item {% if request.url.path == '/admin' %}active{% endif %}">
+    <a href="/admin" class="nav-item {% if current_page == 'dashboard' %}active{% endif %}">
       <span class="icon">📊</span> 대시보드
     </a>
 
     <div class="nav-section">서버 관리</div>
-    <a href="/admin/backup" class="nav-item {% if '/backup' in request.url.path %}active{% endif %}">
+    <a href="/admin/backup" class="nav-item {% if current_page == 'backup' %}active{% endif %}">
       <span class="icon">💾</span> 백업 관리
     </a>
-    <a href="/admin/members" class="nav-item {% if '/members' in request.url.path %}active{% endif %}">
+    <a href="/admin/members" class="nav-item {% if current_page == 'members' %}active{% endif %}">
       <span class="icon">👥</span> 멤버 관리
     </a>
-    <a href="/admin/invite" class="nav-item {% if '/invite' in request.url.path %}active{% endif %}">
+    <a href="/admin/invite" class="nav-item {% if current_page == 'invite' %}active{% endif %}">
       <span class="icon">📨</span> 초대 로그
     </a>
 
     <div class="nav-section">자판기</div>
-    <a href="/admin/shop" class="nav-item {% if '/shop' in request.url.path %}active{% endif %}">
+    <a href="/admin/shop" class="nav-item {% if current_page == 'shop' %}active{% endif %}">
       <span class="icon">🏪</span> 자판기 관리
     </a>
 
     <div class="nav-section">설정</div>
-    <a href="/admin/settings" class="nav-item {% if '/settings' in request.url.path %}active{% endif %}">
+    <a href="/admin/settings" class="nav-item {% if current_page == 'settings' %}active{% endif %}">
       <span class="icon">⚙️</span> 봇 설정
     </a>
   </nav>

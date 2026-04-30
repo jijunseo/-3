@@ -57,11 +57,19 @@ def require_session(request: Request) -> dict:
     return s
 
 
-def _html(name: str, request: Request, ctx: dict = None):
+def _html(name: str, request: Request, ctx: dict = None, page: str = "dashboard"):
     ctx = ctx or {}
     s   = get_session(request)
-    ctx.update({"request": request, "user": s or {}, "client_id": CLIENT_ID,
-                "redirect_uri": ADMIN_OAUTH_REDIRECT})
+    # 쿠키에서 guild_id 안전하게 읽기
+    current_guild_id = request.cookies.get("guild_id") or ""
+    ctx.update({
+        "request":          request,
+        "user":             s or {"username": "", "guilds": []},
+        "client_id":        CLIENT_ID,
+        "redirect_uri":     ADMIN_OAUTH_REDIRECT,
+        "current_guild_id": current_guild_id,
+        "current_page":     page,
+    })
     return templates.TemplateResponse(name, ctx)
 
 
@@ -154,7 +162,8 @@ async def oauth_callback(request: Request):
 async def admin_login(request: Request):
     if get_session(request):
         return RedirectResponse("/admin")
-    return _html("login.html", request)
+    error_param = request.query_params.get("error", "")
+    return _html("login.html", request, ctx={"login_error": bool(error_param)}, page="login")
 
 
 @app.get("/admin/callback")
@@ -237,7 +246,7 @@ async def admin_dashboard(request: Request):
     s = get_session(request)
     if not s:
         return RedirectResponse("/admin/login")
-    return _html("dashboard.html", request)
+    return _html("dashboard.html", request, page="dashboard")
 
 
 @app.get("/admin/backup", response_class=HTMLResponse)
@@ -245,7 +254,7 @@ async def admin_backup(request: Request):
     s = get_session(request)
     if not s:
         return RedirectResponse("/admin/login")
-    return _html("backup.html", request)
+    return _html("backup.html", request, page="backup")
 
 
 @app.get("/admin/members", response_class=HTMLResponse)
@@ -253,7 +262,7 @@ async def admin_members(request: Request):
     s = get_session(request)
     if not s:
         return RedirectResponse("/admin/login")
-    return _html("members.html", request)
+    return _html("members.html", request, page="members")
 
 
 @app.get("/admin/shop", response_class=HTMLResponse)
@@ -261,7 +270,7 @@ async def admin_shop(request: Request):
     s = get_session(request)
     if not s:
         return RedirectResponse("/admin/login")
-    return _html("shop.html", request)
+    return _html("shop.html", request, page="shop")
 
 
 @app.get("/admin/invite", response_class=HTMLResponse)
@@ -269,7 +278,7 @@ async def admin_invite(request: Request):
     s = get_session(request)
     if not s:
         return RedirectResponse("/admin/login")
-    return _html("invite.html", request)
+    return _html("invite.html", request, page="invite")
 
 
 @app.get("/admin/settings", response_class=HTMLResponse)
@@ -277,7 +286,7 @@ async def admin_settings(request: Request):
     s = get_session(request)
     if not s:
         return RedirectResponse("/admin/login")
-    return _html("settings.html", request)
+    return _html("settings.html", request, page="settings")
 
 
 # ══════════════════════════════════════════════════

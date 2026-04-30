@@ -33,7 +33,7 @@ body{background:#1a1c1f;display:flex;justify-content:center;align-items:center;m
   <div class="sub">서버 복구 & 관리 시스템</div>
   <div class="divider"></div>
 
-  {% if request.query_params.get('error') %}
+  {% if login_error %}
   <div class="error-msg">⚠️ 로그인에 실패했습니다. 다시 시도해주세요.</div>
   {% endif %}
 
