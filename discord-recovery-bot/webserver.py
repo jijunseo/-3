@@ -63,14 +63,13 @@ def _html(name: str, request: Request, ctx: dict = None, page: str = "dashboard"
     # 쿠키에서 guild_id 안전하게 읽기
     current_guild_id = request.cookies.get("guild_id") or ""
     ctx.update({
-        "request":          request,
         "user":             s or {"username": "", "guilds": []},
         "client_id":        CLIENT_ID,
         "redirect_uri":     ADMIN_OAUTH_REDIRECT,
         "current_guild_id": current_guild_id,
         "current_page":     page,
     })
-    return templates.TemplateResponse(name, ctx)
+    return templates.TemplateResponse(request=request, name=name, context=ctx)
 
 
 # ══════════════════════════════════════════════════
